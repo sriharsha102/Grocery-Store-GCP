@@ -1,6 +1,7 @@
 # Core UI and App
 fastapi
-uvicorn
+# uvicorn
+uvicorn[standard]
 
 # LangChain + OpenAI
 langchain

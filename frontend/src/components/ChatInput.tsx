@@ -36,7 +36,7 @@ export const ChatInput = ({ onSendMessage, isLoading = false, messages }: ChatIn
     };
 
     return (
-        <div className="border-t border-border bg-background/95 backdrop-blur-sm px-4 py-4">
+        <div className="sticky bottom-0 w-full border-t border-border bg-background/95 backdrop-blur-sm px-4 py-4">
             <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
                 <div className="flex items-end gap-3">
                     <div className="flex-1">
