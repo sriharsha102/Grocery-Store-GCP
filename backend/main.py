@@ -194,7 +194,7 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
         {{tools}}
 
         Follow this process:
-        1. Greet the user. Ask for their full name if they are a returning customer (e.g., "John Doe"), or if they'd like to continue as guest.
+        1.  Greet the user. Ask for their full name if they are a returning customer (e.g., "John Doe"), or if they'd like to continue as guest.
             - If the customer provides their name, use the validate_customer_tool immediately to check if the customer exists using DisplayName in QuickBooks.
                 - If the customer exists, greet them with "Welcome back, [name]!" and continue.
                 - If the customer does not exist, ask: 
@@ -205,27 +205,38 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
         4. Generate an invoice using create_invoice_tool. Send the link to the customer. Let the Customer verify that everything is correct.
         5. If the user wants to proceed, you must use `view_cart` tool and `generate_summary` tool to provide cart_items to `trigger_payment_tool` tool.
         6. If the user claims to have paid, use `stripe_checkout_status_tool` tool to see if payment has been made. DO NOT move on to the next step if the payment has not been made. Let customer know they still have to pay if that is the case.
-        7. Once Payment is complete, use `create_fedex_shipment` tool and return the tracking ID and the link to the shipping label.
-        8. (Mandatory) DO NOT forget to ask if and only if the customer was initially added as a guest:
-            - Only ask: "Would you like to save your profile for future orders?"
-            - If they say yes:
-                1) Prompt the user to provide their full details:
-                    - First name
-                    - Last name
-                    - Phone number
-                    - Email address
-                    - Shipping address (street, city, state, postal code)
-                2) After all details are collected, call rename_customer_tool with:
-                    - customer_id
-                    - new_name (first + last)
-                    - phone
-                    - email
-                    - address_line1
-                    - city
-                    - state
-                    - postal_code
-            - Only ask the save-profile question if and only if the latest client state says is_guest == True (passed via the input string).
+        7. Once payment is complete, check if the user is a guest or not using the `check_guest_tool`. If the customer is a guest, ask for their:
+                - First name
+                - Last name
+                - Phone number
+                - Email address
+                - Shipping address (street line, city, state, postal code)
+            If the user is an existing customer, just ask for:
+                - Phone number
+                - Shipping address (street line, city, state, postal code)
+            Use this information (MANDATORY: Make sure you include the customer's name!), to call the `create_fedex_shipment` tool and return the tracking ID and the link to the shipping label.
+        8. Check if the customer is a guest or not using the `check_guest_tool`. If they are a guest, ask if they would like to save their profile for future orders. If so, call the `rename_customer_tool` with the information from the previous step.
+        
     """
+
+        # 7. Once Payment is complete, use `create_fedex_shipment` tool and return the tracking ID and the link to the shipping label. Then check if the customer is a guest or not using the `check_guest_tool`. If they are a guest, ask if they would like to save their profile for future orders.
+        #     - If they say yes:
+        #         1) Prompt the user to provide their full details:
+        #             - First name
+        #             - Last name
+        #             - Phone number
+        #             - Email address
+        #             - Shipping address (street, city, state, postal code)
+        #         2) After all details are collected, call `rename_customer_tool` with:
+        #             - customer_id
+        #             - new_name (first + last)
+        #             - phone
+        #             - email
+        #             - address_line1
+        #             - city
+        #             - state
+        #             - postal_code
+
 
 
                         # - Phone number

@@ -36,6 +36,10 @@ def promote_to_real(session_id: str) -> None:
     s = get_state(session_id)
     s.is_guest = False
     save_state(session_id, s)
+    
+def is_guest(session_id: str) -> bool:
+    s = get_state(session_id)
+    return s.is_guest
 
 
 ### Cart ###

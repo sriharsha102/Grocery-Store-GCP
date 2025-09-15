@@ -44,62 +44,116 @@ class FedExWrapper:
             print("Failed to get FedEx token.")
             raise Exception(f"{response.status_code} - {response.text}")
 
-    def create_shipment(self):
+    def create_shipment(self, personName: str = None, phoneNumber: str = None, streetLine: str = None, city: str = None, stateOrProvince: str = None, postalCode: str = None, countryCode: str = None):
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
             "x-locale": "en_US",
         }
+        
+        # payload = None
+        
+        if not personName or not phoneNumber or not streetLine or not city or not stateOrProvince or not postalCode or not countryCode:
 
-        payload = {
-            "labelResponseOptions": "URL_ONLY",
-            "accountNumber": {"value": self.account_number},
-            "requestedShipment": {
-                "shipDatestamp": "2025-08-01",
-                "pickupType": "DROPOFF_AT_FEDEX_LOCATION",
-                "serviceType": "FEDEX_GROUND",
-                "packagingType": "YOUR_PACKAGING",
-                "shipper": {
-                    "contact": {
-                        "personName": "Madison Doe",
-                        "companyName": "Test Company 3",
-                        "phoneNumber": "1234567890"
+            payload = {
+                "labelResponseOptions": "URL_ONLY",
+                "accountNumber": {"value": self.account_number},
+                "requestedShipment": {
+                    "shipDatestamp": "2025-08-01",
+                    "pickupType": "DROPOFF_AT_FEDEX_LOCATION",
+                    "serviceType": "FEDEX_GROUND",
+                    "packagingType": "YOUR_PACKAGING",
+                    "shipper": {
+                        "contact": {
+                            "personName": "Madison Doe",
+                            "companyName": "Chai Corner",
+                            "phoneNumber": "1234567890"
+                        },
+                        "address": {
+                            "streetLines": ["1234 Main St"],
+                            "city": "Collierville",
+                            "stateOrProvinceCode": "TN",
+                            "postalCode": "38017",
+                            "countryCode": "US"
+                        }
                     },
-                    "address": {
-                        "streetLines": ["1234 Main St"],
-                        "city": "Collierville",
-                        "stateOrProvinceCode": "TN",
-                        "postalCode": "38017",
-                        "countryCode": "US"
-                    }
-                },
-                "recipients": [{
-                    "contact": {
-                        "personName": "Smith Doe",
-                        "companyName": "Receiver Corp 3",
-                        "phoneNumber": "0987654321"
+                    "recipients": [{
+                        "contact": {
+                            "personName": "Smith Doe",
+                            "companyName": "Receiver Corp 3",
+                            "phoneNumber": "0987654321"
+                        },
+                        "address": {
+                            "streetLines": ["5678 Market St"],
+                            "city": "Memphis",
+                            "stateOrProvinceCode": "TN",
+                            "postalCode": "38116",
+                            "countryCode": "US"
+                        }
+                    }],
+                    "shippingChargesPayment": {
+                        "paymentType": "SENDER"
                     },
-                    "address": {
-                        "streetLines": ["5678 Market St"],
-                        "city": "Memphis",
-                        "stateOrProvinceCode": "TN",
-                        "postalCode": "38116",
-                        "countryCode": "US"
-                    }
-                }],
-                "shippingChargesPayment": {
-                    "paymentType": "SENDER"
-                },
-                "labelSpecification": {
-                    "imageType": "PDF",
-                    "labelStockType": "PAPER_4X6"
-                },
-                "requestedPackageLineItems": [{
-                    "weight": {"units": "LB", "value": 2},
-                    "dimensions": {"length": 10, "width": 5, "height": 5, "units": "IN"}
-                }]
+                    "labelSpecification": {
+                        "imageType": "PDF",
+                        "labelStockType": "PAPER_4X6"
+                    },
+                    "requestedPackageLineItems": [{
+                        "weight": {"units": "LB", "value": 2},
+                        "dimensions": {"length": 10, "width": 5, "height": 5, "units": "IN"}
+                    }]
+                }
             }
-        }
+        else:
+            payload = {
+                "labelResponseOptions": "URL_ONLY",
+                "accountNumber": {"value": self.account_number},
+                "requestedShipment": {
+                    "shipDatestamp": "2025-08-01",
+                    "pickupType": "DROPOFF_AT_FEDEX_LOCATION",
+                    "serviceType": "FEDEX_GROUND",
+                    "packagingType": "YOUR_PACKAGING",
+                    "shipper": {
+                        "contact": {
+                            "personName": "Madison Doe",
+                            "companyName": "Chai Corner",
+                            "phoneNumber": "1234567890"
+                        },
+                        "address": {
+                            "streetLines": ["1234 Main St"],
+                            "city": "Collierville",
+                            "stateOrProvinceCode": "TN",
+                            "postalCode": "38017",
+                            "countryCode": "US"
+                        }
+                    },
+                    "recipients": [{
+                        "contact": {
+                            "personName": personName,
+                            "companyName": "Receiver Corp 3",
+                            "phoneNumber": phoneNumber
+                        },
+                        "address": {
+                            "streetLines": [streetLine],
+                            "city": city,
+                            "stateOrProvinceCode": stateOrProvince,
+                            "postalCode": postalCode,
+                            "countryCode": countryCode
+                        }
+                    }],
+                    "shippingChargesPayment": {
+                        "paymentType": "SENDER"
+                    },
+                    "labelSpecification": {
+                        "imageType": "PDF",
+                        "labelStockType": "PAPER_4X6"
+                    },
+                    "requestedPackageLineItems": [{
+                        "weight": {"units": "LB", "value": 2},
+                        "dimensions": {"length": 10, "width": 5, "height": 5, "units": "IN"}
+                    }]
+                }
+            }
 
         try:
             response = _request_with_auto_refresh('post', self.shipment_url, headers=headers, json=payload)

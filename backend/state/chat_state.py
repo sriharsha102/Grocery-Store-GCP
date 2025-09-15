@@ -2,7 +2,7 @@ class ChatState:
     
     def __init__(self):
         self.customer_id = None
-        self.is_guest = False
+        self.is_guest = True
         self.cart = {}
         self.websocket = None
         self.stripe_order_id = None
@@ -10,7 +10,7 @@ class ChatState:
 
     def reset(self):
         self.customer_id = None
-        self.is_guest = False
+        self.is_guest = True
         self.cart = {}
         self.websocket = None
         self.stripe_order_id = None
@@ -30,7 +30,7 @@ class ChatState:
     def from_dict(cls, data):
         instance = cls()
         instance.customer_id = data.get("customer_id")
-        instance.is_guest = bool(data.get("is_guest", False))
+        instance.is_guest = bool(data.get("is_guest", True))
         instance.cart = data.get("cart")
         instance.websocket = data.get("websocket")
         instance.stripe_order_id = data.get("stripe_order_id")
