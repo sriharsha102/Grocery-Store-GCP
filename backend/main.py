@@ -1,5 +1,7 @@
 import os
 import io
+import sys
+import logging
 from pathlib import Path
 import requests
 from fastapi import FastAPI, WebSocket
@@ -24,18 +26,37 @@ from routers.applepay import router as applepay_router
 from state.session import set_websocket
 from tools.tool_config import get_all_tools
 from tools.quickbooks.quickbooks_wrapper import QuickBooksWrapper
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pathlib import Path
 
+# Serve built frontend from backend/static
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+
+    # SPA fallback: unknown paths return index.html
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        index_file = static_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        return {"detail": "Frontend not built yet"}
+
+# Simple health endpoint (for Azure probe)
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
 # ──────────────────────────────────────────────────────────────────────────────
-# Logging. TODO: Disable in prod :)
+# Set up logging for the application
 # ──────────────────────────────────────────────────────────────────────────────
-import sys
-import logging
+logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO, # Set the lowest level of message to display
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     stream=sys.stdout, # Ensure logs go to the terminal
 )
-
+logger.info("Chai Corner Backend starting up...")
 # ──────────────────────────────────────────────────────────────────────────────
 # Environment
 # ──────────────────────────────────────────────────────────────────────────────
