@@ -177,7 +177,7 @@ class QBCodeExchangeRequest(BaseModel):
     code: str
     redirect_uri: Optional[str] = None
 
-@app.get("/api/token/{provider}")
+@app.get("/{provider}")
 def http_get_tokens(provider: str) -> Dict[str, Any]:
     logger.info(f"GET request for token for provider: {provider}")
     tok = get_token_for_provider(provider)
@@ -186,18 +186,18 @@ def http_get_tokens(provider: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"No tokens stored for provider '{provider}'.")
     return tok
 
-@app.post("/api/token/{provider}/set")
+@app.post("/{provider}/set")
 def http_set_tokens(provider: str, payload: TokenSetRequest) -> Dict[str, Any]:
     logger.info(f"POST request to set token for provider: {provider}")
     return set_token_for_provider(provider, payload.access_token, payload.refresh_token)
 
-@app.post("/api/token/{provider}/refresh")
+@app.post("/{provider}/refresh")
 def http_refresh_tokens(provider: str) -> Dict[str, Any]:
     logger.info(f"POST request to refresh token for provider: {provider}")
     return refresh_token_for_provider(provider)
 
 # New: return the OAuth authorize URL so you can just click it
-@app.get("/api/token/quickbooks/authorize")
+@app.get("/quickbooks/authorize")
 def qb_authorize_url(state: str = "xyz") -> Dict[str, str]:
     logger.info("GET request for QuickBooks authorize URL.")
     _ensure_qb_prereqs()
@@ -214,7 +214,7 @@ def qb_authorize_url(state: str = "xyz") -> Dict[str, str]:
     logger.info(f"Generated QuickBooks authorize URL: {url}")
     return {"authorize_url": url}
 
-@app.post("/api/token/quickbooks/exchange")
+@app.post("/quickbooks/exchange")
 def qb_exchange_code(payload: QBCodeExchangeRequest) -> Dict[str, Any]:
     logger.info("POST request to exchange QuickBooks authorization code.")
     _ensure_qb_prereqs()
@@ -237,11 +237,11 @@ def qb_exchange_code(payload: QBCodeExchangeRequest) -> Dict[str, Any]:
         logger.error(f"QuickBooks code exchange failed due to request error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Request error during code exchange: {e}")
 
-@app.get("/api/token/quickbooks/callback", response_class=HTMLResponse)
+@app.get("/quickbooks/callback", response_class=HTMLResponse)
 def qb_callback(code: Optional[str] = None, state: Optional[str] = None, realmId: Optional[str] = None):
     """
     Handles Intuit's redirect:
-      /api/token/quickbooks/callback?code=...&state=...&realmId=...
+      /quickbooks/callback?code=...&state=...&realmId=...
     Exchanges the code for tokens and persists them. Returns a tiny success page.
     """
     logger.info(f"Callback received with code: {code}, realmId: {realmId}")
