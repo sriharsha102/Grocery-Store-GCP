@@ -6,7 +6,8 @@ from pathlib import Path
 import requests
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -26,37 +27,18 @@ from routers.applepay import router as applepay_router
 from state.session import set_websocket
 from tools.tool_config import get_all_tools
 from tools.quickbooks.quickbooks_wrapper import QuickBooksWrapper
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pathlib import Path
 
-# Serve built frontend from backend/static
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
-
-    # SPA fallback: unknown paths return index.html
-    @app.get("/{full_path:path}")
-    async def spa_fallback(full_path: str):
-        index_file = static_dir / "index.html"
-        if index_file.exists():
-            return FileResponse(index_file)
-        return {"detail": "Frontend not built yet"}
-
-# Simple health endpoint (for Azure probe)
-@app.get("/api/health")
-def health_check():
-    return {"status": "ok"}
 # ──────────────────────────────────────────────────────────────────────────────
-# Set up logging for the application
+# Logging
 # ──────────────────────────────────────────────────────────────────────────────
-logger = logging.getLogger(__name__)
 logging.basicConfig(
-    level=logging.INFO, # Set the lowest level of message to display
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stdout, # Ensure logs go to the terminal
+    stream=sys.stdout,
 )
+logger = logging.getLogger(__name__)
 logger.info("Chai Corner Backend starting up...")
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Environment
 # ──────────────────────────────────────────────────────────────────────────────
@@ -64,7 +46,7 @@ ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL") or "gpt-4o-mini"  # safe default
+OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL") or "gpt-4o-mini"
 
 if not OPENAI_API_KEY:
     raise RuntimeError("Missing OPENAI_API_KEY in environment.")
@@ -74,7 +56,7 @@ if not OPENAI_API_KEY:
 # ──────────────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Chai Corner Backend")
 
-# Define allowed origins for CORS
+# CORS
 origins = [
     "http://10.0.0.80:8080",
     "http://localhost:8080",
@@ -82,7 +64,6 @@ origins = [
     "http://127.0.0.1:8080",
     "http://10.0.0.106:8080",
 ]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -91,20 +72,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize SDK wrappers once
-qb = QuickBooksWrapper()
-
-# Health
+# Health for Azure probe (pick ONE path and keep it consistent in App Settings)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Static SPA (built frontend copied into backend/static by CI)
+# ──────────────────────────────────────────────────────────────────────────────
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    # Mount after declaring API routes to avoid confusion; /api/* will still go to main app
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+
+    # SPA fallback so deep-links render index.html
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        index_file = static_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        return JSONResponse({"detail": "Frontend not built yet"}, status_code=404)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SDKs
+# ──────────────────────────────────────────────────────────────────────────────
+qb = QuickBooksWrapper()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Downloads
 # ──────────────────────────────────────────────────────────────────────────────
 @app.get("/download/invoice/{invoice_id}")
 def download_invoice(invoice_id: str):
-    """Stream a QuickBooks invoice PDF by invoice_id."""
     try:
         pdf_bytes = qb.get_invoice_pdf(invoice_id)
         return StreamingResponse(
@@ -117,10 +115,6 @@ def download_invoice(invoice_id: str):
 
 @app.get("/download/label/{tracking_number}")
 def download_label(tracking_number: str):
-    """
-    Streams the FedEx label PDF given a tracking number.
-    NOTE: Replace the URL logic with your persisted label lookup if available.
-    """
     try:
         label_url = f"https://www.fedex.com/label/{tracking_number}.pdf"
         resp = requests.get(label_url, timeout=20)
@@ -140,17 +134,10 @@ def download_label(tracking_number: str):
 # ──────────────────────────────────────────────────────────────────────────────
 # Agent
 # ──────────────────────────────────────────────────────────────────────────────
-
-# Session and Memory Management
-
-# This dictionary will store memory objects, with session IDs as keys.
-# WARNING: This is an in-memory store. It will be cleared if the server restarts.
 session_memories = {}
 
 def get_memory_for_session(session_id: str) -> ConversationBufferMemory:
-    """Retrieves or creates a memory object for a given session ID."""
     if session_id not in session_memories:
-        # Ensure new memory objects are created with the correct configuration
         session_memories[session_id] = ConversationBufferMemory(
             memory_key="chat_history",
             return_messages=True
@@ -158,52 +145,32 @@ def get_memory_for_session(session_id: str) -> ConversationBufferMemory:
         session_memories[session_id].chat_memory.add_ai_message(f"Session ID: {session_id}")
     return session_memories[session_id]
 
-
-
-
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(ws: WebSocket, session_id: str):
-    # TODO: Remove later
     logging.info(f"Session_id in main.websocket_endpoint: {session_id}")
-
     await ws.accept()
     set_websocket(session_id, ws)
-    
     try:
         while True:
             data = await ws.receive_json()
-            print(f"Websocket --- Message from {session_id}: {data}")
-            
+            logging.info(f"Websocket --- Message from {session_id}: {data}")
             if data.get("event") == "payment_complete":
-                #
-                #   TODO: Actually make sure it is paid
-                #
                 logging.info(f"main.py --- Payment complete for session: {session_id}")
-                
                 memory = get_memory_for_session(session_id)
-
                 agent_executor = create_agent(memory)
-
-                response = await agent_executor.ainvoke({"input": "The payment has been verified. Please move on to shipping."})
-                
-                logging.info(f"main.py --- Sending response back after payment: {response.get("output")}")
+                response = await agent_executor.ainvoke(
+                    {"input": "The payment has been verified. Please move on to shipping."}
+                )
                 await ws.send_json({
                     "type": "agent_message",
                     "ai_message": response.get("output")
                 })
     except Exception:
         set_websocket(session_id, None)
-        
 
 def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
-    """Create and return the LangChain tool-calling agent executor."""
     tools = get_all_tools()
-
-    llm = ChatOpenAI(
-        model=OPENAI_API_MODEL,
-        temperature=0,
-        openai_api_key=OPENAI_API_KEY,
-    )
+    llm = ChatOpenAI(model=OPENAI_API_MODEL, temperature=0, openai_api_key=OPENAI_API_KEY)
 
     SYSTEM_PROMPT = """
         You are a friendly and helpful AI assistant for an e-commerce business called Chai Corner.
@@ -219,13 +186,13 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
                 - If the customer exists, greet them with "Welcome back, [name]!" and continue.
                 - If the customer does not exist, ask: 
                     “I couldn’t find your profile. Would you like to continue as a guest?”
-            - If the user chooses to continue as guest, create a guest profile using `create_guest_tool`, and let them know: "Nice to meet you! We've created a guest profile for now."
-        2. Display the available products to the user after greeting message using  `products_tool` and ask the customer what all he or she would like to order.
-        3. After the user gives you the order add the items to cart.When adding items to the cart, use `products_tool` to make sure they are a valid item and then add to cart using `add_to_cart` tool. Use the other cart tools to remove items, view cart and clear cart.
+            - If the user chooses to continue as guest, create a guest profile using create_guest_tool, and let them know: "Nice to meet you! We've created a guest profile for now."
+        2. Display the available products to the user after greeting message using  products_tool and ask the customer what all he or she would like to order.
+        3. After the user gives you the order add the items to cart.When adding items to the cart, use products_tool to make sure they are a valid item and then add to cart using add_to_cart tool. Use the other cart tools to remove items, view cart and clear cart.
         4. Generate an invoice using create_invoice_tool. Send the link to the customer. Let the Customer verify that everything is correct.
-        5. If the user wants to proceed, you must use `view_cart` tool and `generate_summary` tool to provide cart_items to `trigger_payment_tool` tool.
-        6. If the user claims to have paid, use `stripe_checkout_status_tool` tool to see if payment has been made. DO NOT move on to the next step if the payment has not been made. Let customer know they still have to pay if that is the case.
-        7. Once payment is complete, check if the user is a guest or not using the `check_guest_tool`. If the customer is a guest, ask for their:
+        5. If the user wants to proceed, you must use view_cart tool and generate_summary tool to provide cart_items to trigger_payment_tool tool.
+        6. If the user claims to have paid, use stripe_checkout_status_tool tool to see if payment has been made. DO NOT move on to the next step if the payment has not been made. Let customer know they still have to pay if that is the case.
+        7. Once payment is complete, check if the user is a guest or not using the check_guest_tool. If the customer is a guest, ask for their:
                 - First name
                 - Last name
                 - Phone number
@@ -234,9 +201,11 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
             If the user is an existing customer, just ask for:
                 - Phone number
                 - Shipping address (street line, city, state, postal code)
-            Use this information (MANDATORY: Make sure you include the customer's name!), to call the `create_fedex_shipment` tool and return the tracking ID and the link to the shipping label.
-        8. Check if the customer is a guest or not using the `check_guest_tool`. If they are a guest, ask if they would like to save their profile for future orders. If so, call the `rename_customer_tool` with the information from the previous step.
+            Use this information (MANDATORY: Make sure you include the customer's name!), to call the create_fedex_shipment tool and return the tracking ID and the link to the shipping label.
+        8. Check if the customer is a guest or not using the check_guest_tool. If they are a guest, ask if they would like to save their profile for future orders. If so, call the rename_customer_tool with the information from the previous step.
     """
+
+    
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -248,50 +217,27 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
     )
 
     agent = create_tool_calling_agent(llm, tools, prompt)
+    return AgentExecutor(agent=agent, tools=tools, memory=memory, verbose=True, handle_parsing_errors=True)
 
-    return AgentExecutor(
-        agent=agent,
-        tools=tools,
-        memory=memory,
-        verbose=True,
-        handle_parsing_errors=True,
-    )
-    
-    
 # ──────────────────────────────────────────────────────────────────────────────
 # Main chat endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-
 class ChatRequest(BaseModel):
     message: str
     session_id: str
-    
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
-    """
-    Receives a message, retrieves the correct session memory,
-    creates an agent with that memory, and returns a response.
-    """
     try:
         session_id = request.session_id
-        
-        memory = get_memory_for_session(session_id)
-        
-        # TODO: Remove later
         logging.info(f"Session_id in main.chat_endpoint: {session_id}")
-
+        memory = get_memory_for_session(session_id)
         agent_executor = create_agent(memory)
-
         response = await agent_executor.ainvoke({"input": request.message})
-
         return {"response": response.get("output")}
-
     except Exception as e:
-        print(f"An error occurred in chat endpoint: {e}")
-        return {"error": "An internal server error occurred."}
-
-
+        logging.exception("An error occurred in chat endpoint")
+        return JSONResponse({"error": "An internal server error occurred."}, status_code=500)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Routers
