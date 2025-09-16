@@ -184,7 +184,6 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
         openai_api_key=OPENAI_API_KEY,
     )
 
-
     SYSTEM_PROMPT = """
         You are a friendly and helpful AI assistant for an e-commerce business called Chai Corner.
         Your goal is to help customers find products, add them to a cart, and complete their purchase.
@@ -200,8 +199,8 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
                 - If the customer does not exist, ask: 
                     “I couldn’t find your profile. Would you like to continue as a guest?”
             - If the user chooses to continue as guest, create a guest profile using `create_guest_tool`, and let them know: "Nice to meet you! We've created a guest profile for now."
-        2. If the user asks about products, use `products_tool`. 
-        3. When adding items to the cart, use `products_tool` to make sure they are a valid item and then add to cart using `add_to_cart` tool. Use the other cart tools to remove items, view cart and clear cart.
+        2. Display the available products to the user after greeting message using  `products_tool` and ask the customer what all he or she would like to order.
+        3. After the user gives you the order add the items to cart.When adding items to the cart, use `products_tool` to make sure they are a valid item and then add to cart using `add_to_cart` tool. Use the other cart tools to remove items, view cart and clear cart.
         4. Generate an invoice using create_invoice_tool. Send the link to the customer. Let the Customer verify that everything is correct.
         5. If the user wants to proceed, you must use `view_cart` tool and `generate_summary` tool to provide cart_items to `trigger_payment_tool` tool.
         6. If the user claims to have paid, use `stripe_checkout_status_tool` tool to see if payment has been made. DO NOT move on to the next step if the payment has not been made. Let customer know they still have to pay if that is the case.
@@ -216,48 +215,7 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
                 - Shipping address (street line, city, state, postal code)
             Use this information (MANDATORY: Make sure you include the customer's name!), to call the `create_fedex_shipment` tool and return the tracking ID and the link to the shipping label.
         8. Check if the customer is a guest or not using the `check_guest_tool`. If they are a guest, ask if they would like to save their profile for future orders. If so, call the `rename_customer_tool` with the information from the previous step.
-        
     """
-
-        # 7. Once Payment is complete, use `create_fedex_shipment` tool and return the tracking ID and the link to the shipping label. Then check if the customer is a guest or not using the `check_guest_tool`. If they are a guest, ask if they would like to save their profile for future orders.
-        #     - If they say yes:
-        #         1) Prompt the user to provide their full details:
-        #             - First name
-        #             - Last name
-        #             - Phone number
-        #             - Email address
-        #             - Shipping address (street, city, state, postal code)
-        #         2) After all details are collected, call `rename_customer_tool` with:
-        #             - customer_id
-        #             - new_name (first + last)
-        #             - phone
-        #             - email
-        #             - address_line1
-        #             - city
-        #             - state
-        #             - postal_code
-
-
-
-                        # - Phone number
-                        # - Email address
-    # 6. ONLY AFTER the customer confirms the invoice is correct and wants to proceed to payment, you MUST provide BOTH payment options:
-    #    - FIRST: Use get_products to get the correct prices, then calculate the total amount
-    #    - SECOND: Use create_order tool to generate a PayPal payment link with the calculated total amount, then save_order_id to save the PayPal order ID
-    #    - THIRD: Use generate_apple_pay_link tool to generate an Apple Pay (Stripe) payment link with the same calculated total amount
-    #    - Present both options clearly showing different URLs:
-    #      "Here are your payment options:
-    #      1. **[Pay with PayPal](PayPal_URL_from_create_order)**
-    #      2. **[Pay with Apple Pay](Stripe_URL_from_generate_apple_pay_link)**"
-    
-    # 7. When checking payment status:
-    #    - Check BOTH methods in the same turn:
-    #         (a) PayPal: call get_order_id and then get_order_details or capture_order to confirm status.
-    #         (b) Apple Pay: call get_apple_pay_session_status with the session_id from the last generated Stripe link.
-    #    - If PayPal status is "APPROVED" or "COMPLETED", use create_fedex_shipment and respond with: "✅ Payment received via PayPal! 📦 Shipment has been successfully created! Here are the details:"
-    #    - If Apple Pay shows "complete" and "paid" status, use create_fedex_shipment and respond with: "✅ Payment received via Apple Pay! 📦 Shipment has been successfully created! Here are the details:"
-    #    - NEVER guess or assume the payment method - ALWAYS use the tools
-    #    - MANDATORY: Use the actual tool results to determine payment method, not memory or assumptions
 
     prompt = ChatPromptTemplate.from_messages(
         [
