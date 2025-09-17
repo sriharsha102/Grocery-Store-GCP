@@ -1,9 +1,12 @@
 # Core UI and App
 fastapi
-uvicorn
+uvicorn[standard]
 gunicorn
 starlette
 
+
+# your libs
+langchain-openai
 # LangChain + OpenAI
 langchain
 langchain-openai
