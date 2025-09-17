@@ -3,10 +3,9 @@ fastapi
 uvicorn[standard]
 gunicorn
 starlette
+uvicorn
 
 
-# your libs
-langchain-openai
 # LangChain + OpenAI
 langchain
 langchain-openai
