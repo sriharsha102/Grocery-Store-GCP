@@ -63,6 +63,7 @@ origins = [
     "http://localhost:5173",
     "http://127.0.0.1:8080",
     "http://10.0.0.106:8080",
+    "https://chaicorner-agent-hrbwcnaxcvgwhcfc.centralus-01.azurewebsites.net",
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -235,9 +236,12 @@ async def chat_endpoint(request: ChatRequest):
         agent_executor = create_agent(memory)
         response = await agent_executor.ainvoke({"input": request.message})
         return {"response": response.get("output")}
+    # except Exception as e:
+    #     logging.exception("An error occurred in chat endpoint")
+    #     return JSONResponse({"error": "An internal server error occurred."}, status_code=500)
     except Exception as e:
-        logging.exception("An error occurred in chat endpoint")
-        return JSONResponse({"error": "An internal server error occurred."}, status_code=500)
+    logging.exception("An error occurred in chat endpoint")
+    return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Routers
