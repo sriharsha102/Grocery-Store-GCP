@@ -6,8 +6,6 @@ import { type Message } from "@/components/ChatMessage";
 import { v4 as uuidv4 } from 'uuid';
 import PaymentPanel from "@/components/PaymentPanel/PaymentPanel";
 
-// import './Index.css'
-
 // Define the shape of the expected API response
 interface ApiResponse {
     response?: string;
@@ -18,81 +16,95 @@ const Index = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [sessionId, setSessionId] = useState<string>('');
-    const [ws, setWs] = useState<WebSocket>(null);
+    const [ws, setWs] = useState<WebSocket | null>(null);
     const [isPanelOpen, setPanelOpen] = useState(false);
     const [showPaymentPanelButton, setShowPaymentPanelButton] = useState(false);
-    const openPanel = () => setPanelOpen(true);
     const [clientSecret, setClientSecret] = useState('');
     const [paypalOrderId, setPaypalOrderId] = useState('');
 
     // Generate a session ID when the component mounts
     useEffect(() => {
-
-        /* Send server the session ID in every message */
         const sessionUUID = uuidv4();
         setSessionId(sessionUUID);
+        console.info(`Index: New session ID generated: ${sessionUUID}`);
 
-        const newSocket = new WebSocket(`ws://localhost:8001/ws/${sessionUUID}`);
+        const newSocket = new WebSocket(`/api/ws/${sessionUUID}`);
+        setWs(newSocket);
 
         newSocket.onopen = () => {
-            console.log("WebSocket connection established successfully!");
-            console.log("Session UUID: " + sessionUUID);
-            setWs(newSocket);
+            console.info("Index: WebSocket connection established successfully!");
+            console.info(`Index: Session UUID: ${sessionUUID}`);
         };
 
-        newSocket.onclose = () => {
-            console.log('WebSocket disconnected. ❌');
-        }
+        newSocket.onclose = (event) => {
+            console.warn(`Index: WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
+            setWs(null);
+        };
 
         newSocket.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
+            try {
+                const msg = JSON.parse(event.data);
+                console.debug("Index: WebSocket message received:", msg);
 
-            if (msg.type === 'payment_intent_created' && msg.client_secret) {
-                // console.log("Client Secret received from server: " + msg.client_secret);
-                setClientSecret(msg.client_secret);
-                setPaypalOrderId(msg.paypal_order_id);
-
-                console.log("Paypal order id: " + msg.paypal_order_id)
-
-                setPanelOpen(true);
-                setShowPaymentPanelButton(true);
-            } else if (msg.type === 'agent_message' && msg.ai_message) {
-                const aiMessage: Message = {
-                    id: (Date.now() + 1).toString(),
-                    text: msg.ai_message,
-                    sender: 'assistant',
-                    timestamp: new Date(),
-                };
-                setMessages(prev => [...prev, aiMessage])
+                if (msg.type === 'payment_intent_created' && msg.client_secret) {
+                    console.info(`Index: Received 'payment_intent_created' event.`);
+                    console.debug(`Index: Client Secret: ${msg.client_secret.substring(0, 10)}...`);
+                    
+                    setClientSecret(msg.client_secret);
+                    
+                    if (msg.paypal_order_id) {
+                        setPaypalOrderId(msg.paypal_order_id);
+                        console.info(`Index: Paypal order id: ${msg.paypal_order_id}`);
+                    }
+                    
+                    setPanelOpen(true);
+                    setShowPaymentPanelButton(true);
+                } else if (msg.type === 'agent_message' && msg.ai_message) {
+                    console.info(`Index: Received 'agent_message' event.`);
+                    const aiMessage: Message = {
+                        id: (Date.now() + 1).toString(),
+                        text: msg.ai_message,
+                        sender: 'assistant',
+                        timestamp: new Date(),
+                    };
+                    setMessages(prev => [...prev, aiMessage]);
+                    setIsLoading(false);
+                } else {
+                    console.warn(`Index: Received unknown message type or incomplete data:`, msg);
+                }
+            } catch (e) {
+                console.error("Index: Failed to parse WebSocket message:", e);
+                setIsLoading(false);
             }
         };
 
         newSocket.onerror = (error) => {
-            console.error("WebSocket error: ", error);
+            console.error("Index: WebSocket error: ", error);
         };
 
+        // "Send" an initial message to explain to the user what to do
+        const timer = setTimeout(() => {
+            const inititalMessage: Message = {
+                id: Date.now().toString(),
+                text: "Welcome to Chai Corner! If you're a returning customer, could you please provide your full name? If you'd like to continue as a guest, just let me know!",
+                sender: 'assistant',
+                timestamp: new Date()
+            };
+            setMessages(prev => [...prev, inititalMessage]);
+            console.info("Index: Initial welcome message displayed.");
+        }, 1000);
 
-        /* "Send" an initial message to explaing to the user what to do */
-        {
-
-            const timer = setTimeout(() => {
-                const inititalMessage: Message = {
-                    id: Date.now().toString(),
-                    text: "Welcome to Chai Corner! If you're a returning customer, could you please provide your full name? If you'd like to continue as a guest, just let me know!",
-                    sender: 'assistant',
-                    timestamp: new Date()
-                }
-                setMessages(prev => [...prev, inititalMessage]);
-            }, 1000);
-
-        }
-
-        // return () => {
-        //     newSocket.close();
-        // };
+        return () => {
+            // Cleanup function
+            console.info("Index: Component unmounting. Closing WebSocket.");
+            newSocket.close();
+            clearTimeout(timer);
+        };
     }, []);
 
     const handleSendMessage = async (messageText: string) => {
+        console.info(`Index: User is sending a message to the backend: '${messageText}'`);
+        
         const userMessage: Message = {
             id: Date.now().toString(),
             text: messageText,
@@ -104,7 +116,7 @@ const Index = () => {
         setIsLoading(true);
 
         try {
-            const response = await fetch('http://localhost:8001/chat', {
+            const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -112,10 +124,11 @@ const Index = () => {
                 body: JSON.stringify({ message: messageText, session_id: sessionId }),
             });
 
-            // Assert the type of the JSON response
+            console.info(`Index: Received HTTP response with status: ${response.status}`);
             const data: ApiResponse = await response.json();
 
             if (data.response) {
+                console.debug("Index: Backend response:", data.response);
                 const aiMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     text: data.response,
@@ -124,17 +137,17 @@ const Index = () => {
                 };
                 setMessages((prevMessages) => [...prevMessages, aiMessage]);
             } else {
-                console.error('Error from backend:', data.error);
+                console.error('Index: Error from backend:', data.error);
                 const errorMessage: Message = {
                     id: (Date.now() + 1).toString(),
-                    text: "Sorry, something went wrong: " + data.response,
+                    text: "Sorry, something went wrong: " + data.error,
                     sender: 'assistant',
                     timestamp: new Date(),
                 };
                 setMessages((prevMessages) => [...prevMessages, errorMessage]);
             }
         } catch (error) {
-            console.error('Failed to fetch:', error);
+            console.error('Index: Failed to fetch from backend:', error);
             const errorMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 text: "Sorry, I couldn't connect to the server",
@@ -145,7 +158,6 @@ const Index = () => {
         }
 
         setIsLoading(false);
-
     };
 
     return (
@@ -170,14 +182,18 @@ const Index = () => {
             <div className="flex  flex-1">
                 <ChatWindow messages={messages} />
                 {/* Payment panel button appears once payment is ready to be taken so that if the user accidentally closes it, they can reopen */}
-                {showPaymentPanelButton && <button
-                    className="toggle-payment-button"
-                    onClick={() => setPanelOpen(!isPanelOpen)}
-                    aria-label="Toggle panel"
-                >
-                    {isPanelOpen ? '›' : '‹'}
-                </button>
-                }
+                {showPaymentPanelButton && (
+                    <button
+                        className="toggle-payment-button"
+                        onClick={() => {
+                            console.info(`Index: Toggling payment panel. Current state: ${!isPanelOpen}`);
+                            setPanelOpen(!isPanelOpen);
+                        }}
+                        aria-label="Toggle panel"
+                    >
+                        {isPanelOpen ? '›' : '‹'}
+                    </button>
+                )}
             </div>
 
             {/* Chat Input */}
