@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from tools.quickbooks.create_invoice_tool import create_invoice_tool
 # router = APIRouter(prefix="/api/quickbooks", tags=["quickbooks"])
-router = APIRouter(prefix="/quickbooks", tags=["quickbooks"])
+router = APIRouter(prefix="/api/quickbooks", tags=["quickbooks"])
 class Item(BaseModel):
     name: str
     quantity: int
