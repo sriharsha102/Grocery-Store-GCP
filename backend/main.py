@@ -78,20 +78,20 @@ def health():
     return {"status": "ok"}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Static SPA (built frontend copied into backend/static by CI)
-# ──────────────────────────────────────────────────────────────────────────────
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    # Mount after declaring API routes to avoid confusion; /api/* will still go to main app
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+# # Static SPA (built frontend copied into backend/static by CI)
+# # ──────────────────────────────────────────────────────────────────────────────
+# static_dir = Path(__file__).parent / "static"
+# if static_dir.exists():
+#     # Mount after declaring API routes to avoid confusion; /api/* will still go to main app
+#     app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
-    # SPA fallback so deep-links render index.html
-    @app.get("/{full_path:path}")
-    async def spa_fallback(full_path: str):
-        index_file = static_dir / "index.html"
-        if index_file.exists():
-            return FileResponse(index_file)
-        return JSONResponse({"detail": "Frontend not built yet"}, status_code=404)
+#     # SPA fallback so deep-links render index.html
+#     @app.get("/{full_path:path}")
+#     async def spa_fallback(full_path: str):
+#         index_file = static_dir / "index.html"
+#         if index_file.exists():
+#             return FileResponse(index_file)
+#         return JSONResponse({"detail": "Frontend not built yet"}, status_code=404)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SDKs
