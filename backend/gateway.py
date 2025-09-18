@@ -10,7 +10,7 @@ import token_service as token_module
 root = FastAPI(title="Unified App")
 root.mount("/api",   main_module.app)
 root.mount("/token", token_module.app)
-
+root.mount("/api/token", token_module.app) 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(STATIC_DIR):
     root.mount("/static", StaticFiles(directory=STATIC_DIR, html=False), name="static")
