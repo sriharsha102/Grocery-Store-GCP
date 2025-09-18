@@ -1,10 +1,8 @@
 # Core UI and App
-fastapi
-uvicorn[standard]
-gunicorn
 starlette
-uvicorn
-
+fastapi
+gunicorn==21.2.0
+uvicorn[standard]==0.30.6
 
 # LangChain + OpenAI
 langchain
