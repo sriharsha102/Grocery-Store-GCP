@@ -240,8 +240,8 @@ async def chat_endpoint(request: ChatRequest):
     #     logging.exception("An error occurred in chat endpoint")
     #     return JSONResponse({"error": "An internal server error occurred."}, status_code=500)
     except Exception as e:
-    logging.exception("An error occurred in chat endpoint")
-    return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+        logging.exception("An error occurred in chat endpoint")
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Routers
