@@ -181,7 +181,7 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
         {{tools}}
         
         Follow this process:
-        1. Greet the user. Announce the product list. 
+        1. say welcome to chai corner and Greet the user. Announce the product list. 
         2. If the user asks about products, use products_tool.
         3. When adding items to the cart, use products_tool to make sure they are a valid item and then add to cart using add_to_cart tool. Use the other cart tools to remove items, view cart and clear cart.
         4. Once the order is ready , ask the customer their full name before processing the invoice.
