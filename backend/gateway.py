@@ -15,6 +15,10 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(STATIC_DIR):
     root.mount("/static", StaticFiles(directory=STATIC_DIR, html=False), name="static")
 
+@root.get("/")
+async def root_health():
+    return {"status": "ok", "service": "Chai Corner backend running"}
+    
 @root.get("/{_path:path}")
 def spa(_path: str):
     index_html = os.path.join(STATIC_DIR, "index.html")
