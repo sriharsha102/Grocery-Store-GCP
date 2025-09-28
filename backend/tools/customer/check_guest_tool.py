@@ -11,8 +11,10 @@ def check_guest_tool(session_id: str) -> bool:
 
     try:
         if (is_guest(session_id)):
+            print(f"The current customer is a guest")
             return f"The current customer is a guest"
         else:
+            print(f"The current customer is not a guest. They are an existing customer.")
             return f"The current customer is not a guest. They are an existing customer."
     except Exception as e:
         # If there's an error retrieving the customer, assume they're not a guest

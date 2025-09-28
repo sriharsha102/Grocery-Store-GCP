@@ -105,6 +105,8 @@ def add_to_cart(session_id: str, item_name: str, quantity: int) -> str:
     
     cart = get_cart_for_session(session_id)
     
+    item_name = item_name.lower()
+    
     cart[item_name] += quantity
     print(f"--- TOOL CALL: add_to_cart ---")
     print(f"Cart state: {dict(cart)}")
@@ -119,6 +121,8 @@ def remove_from_cart(session_id: str, item_name: str, quantity: int) -> str:
         return "Quantity must be a positive integer to remove from cart."
     
     cart = get_cart_for_session(session_id)
+    
+    item_name = item_name.lower()
     
     if item_name not in cart or cart[item_name] == 0:
         return f"{item_name} is not in the cart."

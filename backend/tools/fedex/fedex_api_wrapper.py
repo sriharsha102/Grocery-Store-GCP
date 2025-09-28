@@ -160,8 +160,10 @@ class FedExWrapper:
             json_data = response.json()
 
             label_url = None
+            tracking_number = None
             try:
                 label_url = json_data["output"]["transactionShipments"][0]["pieceResponses"][0]["packageDocuments"][0]["url"]
+                tracking_number = json_data["output"]["transactionShipments"][0]["masterTrackingNumber"]
             except Exception:
                 pass  # label might not be available in error case
 
@@ -170,6 +172,7 @@ class FedExWrapper:
                 return {
                     "success": True,
                     "label_url": label_url,
+                    "tracking_number": tracking_number,
                     "error": None
                 }
             else:
@@ -177,6 +180,7 @@ class FedExWrapper:
                 return {
                     "success": False,
                     "label_url": label_url,
+                    "tracking_number": tracking_number,
                     "error": json_data.get("errors", "Unknown error")
                 }
 
@@ -185,5 +189,6 @@ class FedExWrapper:
             return {
                 "success": False,
                 "label_url": None,
+                "tracking_number": None,
                 "error": str(e)
             }
