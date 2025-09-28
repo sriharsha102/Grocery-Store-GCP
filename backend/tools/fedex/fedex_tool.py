@@ -14,7 +14,9 @@ def create_fedex_shipment(personName: str = None, phoneNumber: str = None, stree
         return f" Failed to create FedEx shipment.\nError: {result['error']}"
 
     label_url = result["label_url"] or "Label not available"
+    tracking_number = result["tracking_number"] or "Tracking number not available"
     return (
-        f" Shipment Created!\n"
+        f"Shipment Created!\n"
         f"Label URL: {label_url}"
+        f"Tracking number: {tracking_number}"
     )
