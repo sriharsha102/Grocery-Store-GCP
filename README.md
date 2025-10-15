@@ -50,6 +50,7 @@ npm run build
 ```
 ## 6. Start the Application
 
+Make sure you have .env files in both frontend folder and backend folder. 
 Run the following command in backend directory
 ```bash
 uvicorn gateway:root --reload --port 8000
