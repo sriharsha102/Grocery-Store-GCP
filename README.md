@@ -24,10 +24,10 @@ source .venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
-
+in both frontend and backend directories
 ---
 
-## 3. QuickBooks Token Smoke Test
+## 3. QuickBooks Token Smoke Test - optional
 
 This step is meant as a sanity check to see if your QuickBooks token refresh flow is actually working before you run the full chatbot.
 
@@ -36,30 +36,27 @@ python qb_refresh_smoketest.py
 ```
 
 ---
-
-## 4. Start the Backend
-
-Run the **token service**:
+## 4. To copy frontend/dist to backend/static run the following commands:
 ```bash
-uvicorn backend.token_service:app --reload --port 8000
-```
+           mkdir -p backend/static
+           cp -R frontend/dist/* backend/static/
 
-Run the **main chatbot backend**:
+```
+## 5. Execute the following new powershell
+
 ```bash
-uvicorn backend.main:app --reload --port 8001
+npm install
+npm run build
 ```
+## 6. Start the Application
 
+Run the following command in backend directory
+```bash
+uvicorn gateway:root --reload --port 8000
+```
 ---
 
-## 5. Launch the Frontend
-
-```bash
-npm run dev
-```
-
----
-
-## 6. Token Management (QuickBooks)
+## 7. Token Management (QuickBooks) -check this step only if you get token related issues
 
 The code in the `chatbot_fastapi_tools_tokens` branch uses `token_service.py`, a FastAPI microservice, to manage and refresh QuickBooks API tokens.
 
@@ -73,106 +70,19 @@ curl http://localhost:8000/token
 
 This will return the current `access_token` and `refresh_token` in JSON format.
 
-Make sure `token_service.py` is running locally using:
-```bash
-uvicorn backend.token_service:app --reload --port 8000
-```
 
 If the refresh token itself expires (rare, after long inactivity), a manual re-authentication via browser is required to obtain new credentials.
 
----
-
-## 7. How to Reset Tokens
-
-- Delete the `.tokens.json` file:
+## Run following cmd in root folder
 ```bash
-# Linux/Mac
-rm backend/.tokens.json
-
-# Windows
-del backend\.tokens.json
+curl http://127.0.0.1:8000/token/quickbooks/authorize | ConvertFrom-Json | Select-Object -ExpandProperty authorize_url
 ```
-
-- Restart the token service:
-```bash
-uvicorn backend.token_service:app --reload --port 8000
-```
-## 1) Remove any stale token file
-*Windows (PowerShell)*:
-powershell
-del backend\.tokens.json -ErrorAction Ignore
-
-*Mac/Linux*:
-bash
-rm -f backend/.tokens.json
-
-
+copy paste the give url into browser (url should look something like this - https://appcenter.intuit.com/connect/oauth2?...)
+when you copy paste it into browser make sure to remove "api/" from the url
+you will get the "Quickbook connected" message in the browser, now rerun step 6.
 ---
 
-## 2) Start the Token Service
-bash
-uvicorn backend.token_service:app --reload --port 8000
 
-
-Keep this window running.
-
----
-
-## 3) Get new tokens (programmatic, reliable)
-
-### 3.1 Get the authorize URL
-bash
-curl http://localhost:8000/api/token/quickbooks/authorize
-
-Copy the value of authorize_url from the JSON and open it in a browser.
-
-### 3.2 Approve in Intuit & capture the code
-After login & consent you’ll be redirected to a URL like:
-
-http://localhost:8000/api/token/quickbooks/callback?code=ABCD1234XYZ&state=xyz&realmId=934145507451467
-
-Copy *only* the value after code= and *stop before* &state.
-Example code: ABCD1234XYZ
-
-### 3.3 Exchange the code for tokens
-*Windows (PowerShell)*:
-powershell
-$code = "ABCD1234XYZ"
-$body = @{ code = $code } | ConvertTo-Json
-Invoke-RestMethod `
-  -Method POST `
-  -Uri "http://localhost:8000/api/token/quickbooks/exchange" `
-  -ContentType "application/json" `
-  -Body $body
-
-*Mac/Linux (curl)*:
-bash
-curl -X POST "http://localhost:8000/api/token/quickbooks/exchange"   -H "Content-Type: application/json"   -d '{"code":"ABCD1234XYZ"}'
-
-
-Result: the service writes fresh tokens to backend/.tokens.json:
-json
-{
-  "quickbooks": {
-    "access_token": "...",
-    "refresh_token": "...",
-    "expires_at": 1723549872,
-    "realm_id": "934145507451467"
-  }
-}
-
-
----
-
-## 4) (Optional) Force a refresh later
-bash
-curl -X POST http://localhost:8000/api/token/quickbooks/refresh
-
-
----
-- Re-run the **Authorize** → **Exchange** steps.
-
----
 
 ## 8. Deactivating the Environment
 
