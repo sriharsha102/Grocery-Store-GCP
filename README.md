@@ -42,7 +42,7 @@ python qb_refresh_smoketest.py
            cp -R frontend/dist/* backend/static/
 
 ```
-## 5. Execute the following new powershell
+## 5. Execute the following in new powershell
 
 ```bash
 npm install
@@ -77,8 +77,8 @@ If the refresh token itself expires (rare, after long inactivity), a manual re-a
 ```bash
 curl http://127.0.0.1:8000/token/quickbooks/authorize | ConvertFrom-Json | Select-Object -ExpandProperty authorize_url
 ```
-copy paste the give url into browser (url should look something like this - https://appcenter.intuit.com/connect/oauth2?...)
-when you copy paste it into browser make sure to remove "api/" from the url
+copy paste the given url into browser (url should look something like this - https://appcenter.intuit.com/connect/oauth2?...)
+when you copy paste it into browser make sure to remove "api/" from the url if present.
 you will get the "Quickbook connected" message in the browser, now rerun step 6.
 ---
 
@@ -113,7 +113,14 @@ QUICKBOOKS_CLIENT_SECRET=your_client_secret
 QUICKBOOKS_REDIRECT_URI=http://localhost:8000/api/token/quickbooks/callback
 QUICKBOOKS_ENVIRONMENT=sandbox
 ```
-
 ---
+**Now you are ready to run the chatbot with automatic QuickBooks token refresh in local!**
 
-**Now you are ready to run the chatbot with automatic QuickBooks token refresh!**
+-------------------------------------------------------------------------------------------
+
+**To run this in Azure Cloud services**
+
+## 1. open the portal.azure.com and login with credentials
+## 2. Start the app service Chaicorner-Agent and checkout default-domain link to access the app
+## 3. And if you get any token issues, open the link "https://[your-app-domain].azurewebsites.net/tokens/quickbooks/authorize" in browser. And it generates another url, copy this into browser and login to quickbooks.
+## 4. you will get the "Quickbook connected" message in the browser, refresh the chaicorner tab.
