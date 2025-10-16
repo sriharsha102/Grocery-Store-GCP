@@ -36,18 +36,20 @@ python qb_refresh_smoketest.py
 ```
 
 ---
-## 4. To copy frontend/dist to backend/static run the following commands:
-```bash
-           mkdir -p backend/static
-           cp -R frontend/dist/* backend/static/
 
-```
-## 5. Execute the following in new powershell
+## 4. Execute the following in new powershell
 
 ```bash
 npm install
 npm run build
 ```
+## 5. To copy frontend/dist to backend/static run the following commands:
+```bash
+           mkdir -p backend/static
+           cp -R frontend/dist/* backend/static/
+
+```
+
 ## 6. Start the Application
 
 Make sure you have .env files in both frontend folder and backend folder. 
