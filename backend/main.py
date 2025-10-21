@@ -19,14 +19,13 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 # Routers
 from routers.fedex import router as fedex_router
 from routers.paypal import router as paypal_router
-from routers.quickbooks import router as quickbooks_router
-from routers.customer import router as customer_router
+
 from routers.applepay import router as applepay_router
 
 # Tools & SDKs
 from state.session import set_websocket
 from tools.tool_config import get_all_tools
-from tools.quickbooks.quickbooks_wrapper import QuickBooksWrapper
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging
@@ -82,22 +81,22 @@ def health():
 # ──────────────────────────────────────────────────────────────────────────────
 # SDKs
 # ──────────────────────────────────────────────────────────────────────────────
-qb = QuickBooksWrapper()
+#qb = QuickBooksWrapper()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Downloads
 # ──────────────────────────────────────────────────────────────────────────────
-@app.get("/download/invoice/{invoice_id}")
-def download_invoice(invoice_id: str):
-    try:
-        pdf_bytes = qb.get_invoice_pdf(invoice_id)
-        return StreamingResponse(
-            io.BytesIO(pdf_bytes),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=invoice_{invoice_id}.pdf"},
-        )
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+#@app.get("/download/invoice/{invoice_id}")
+#def download_invoice(invoice_id: str):
+ #   try:
+  #      pdf_bytes = qb.get_invoice_pdf(invoice_id)
+   #     return StreamingResponse(
+    #        io.BytesIO(pdf_bytes),
+   #         media_type="application/pdf",
+    #        headers={"Content-Disposition": f"attachment; filename=invoice_{invoice_id}.pdf"},
+   #     )
+    #except Exception as e:
+   #     return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/download/label/{tracking_number}")
 def download_label(tracking_number: str):
@@ -168,26 +167,12 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
         {{tools}}
 
         Follow this process:
-        1.  Greet the user. Ask for their full name if they are a returning customer (e.g., "John Doe"), or if they'd like to continue as guest.
-            - If the customer provides their name, use the validate_customer_tool immediately to check if the customer exists using DisplayName in QuickBooks.
-                - If the customer exists, greet them with "Welcome back, [name]!" and continue.
-                - If the customer does not exist, ask: 
-                    “I couldn’t find your profile. Would you like to continue as a guest?”
-            - If the user chooses to continue as guest, create a guest profile using `create_guest_tool`, and let them know: "Nice to meet you! We've created a guest profile for now."
+        1.  Greet the user. Ask if they need help finding anything.
         2. If the user asks about products, use `products_tool`.
         3. When adding items to the cart, make sure to use `products_tool` to check if it is a valid item. If it is valid, add the exact quantity/quantities of the exact item(s) the user requested to the cart using `add_to_cart` tool. Use the other cart tools to remove items, view cart and clear cart.
-        4. Generate an invoice for the user whenever they are ready to checkout (and the cart is not empty) using the create_invoice_tool. Return the invoice link for user verification. 
-            - If changes have been made to the order after generating the invoice, you must generate the invoice again before proceeding to payment.
         5. If the user wants to proceed to payment, you must use `view_cart` tool and `generate_summary` tool to provide cart_items to `trigger_payment_tool` tool.
         6. If the user claims to have paid, use `stripe_checkout_status_tool` tool to see if payment has been made. DO NOT move on to the next step if the payment has not been made. Let customer know they still have to pay if that is the case.
-        7. After payment, use `check_guest_tool` to determine customer type. 
-            - Acknowledge that the customer has paid.
-            - If guest: Collect their first name, last name, phone number, email, and shipping address (street line, city, state, postal code).
-            - If existing customer: Collect their phone number and shipping address (street line, city, state, postal code).
-        8. Call `create_fedex_shipment` with the customer's details (name is MANDATORY!) to get the tracking number and shipping label url. 
-           MANDATORY: Check the return value of `check_guest_tool` from the previous step
-            - If the customer is a guest, add: "Would you like me to save your profile for future orders?" If they agree, use `rename_customer_tool`.
-            - Else, add: "Is there anything else I can assist you with today?"
+        7. Once payement is conformed, convey to user and ask "Is there anything else I can assist you with today?"
     """
 
     prompt = ChatPromptTemplate.from_messages(
@@ -229,7 +214,5 @@ async def chat_endpoint(request: ChatRequest):
 # Routers
 # ──────────────────────────────────────────────────────────────────────────────
 app.include_router(applepay_router)
-app.include_router(customer_router)
-app.include_router(quickbooks_router)
 app.include_router(paypal_router)
 app.include_router(fedex_router)

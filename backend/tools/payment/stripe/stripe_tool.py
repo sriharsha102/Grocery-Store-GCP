@@ -10,7 +10,7 @@ class CheckoutSessionRequest(BaseModel):
     """Request model for checking a checkout session."""
     session_id: str
     
-@tool("stripe_checkout_status_tool", return_direct=True)
+@tool("stripe_checkout_status_tool", return_direct=False)
 def stripe_checkout_status_tool(session_id: str) -> str:
     """
     Checks the status of a Stripe Checkout Session.

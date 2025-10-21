@@ -47,7 +47,7 @@ npm run build
 ```bash
            mkdir -p backend/static
            cp -R frontend/dist/* backend/static/
-
+#Remove-Item "backend\static" -Recurse -Force -toRemove the folder
 ```
 
 ## 6. Start the Application

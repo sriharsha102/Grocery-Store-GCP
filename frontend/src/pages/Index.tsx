@@ -88,7 +88,7 @@ const Index = () => {
         const timer = setTimeout(() => {
             const inititalMessage: Message = {
                 id: Date.now().toString(),
-                text: "Welcome to Chai Corner! If you're a returning customer, could you please provide your full name? If you'd like to continue as a guest, just let me know!",
+                text: "Welcome to Chai Corner! How can I help you today? You can ask me about our products, add items to your cart, and proceed to checkout when you're ready.",
                 sender: 'assistant',
                 timestamp: new Date()
             };

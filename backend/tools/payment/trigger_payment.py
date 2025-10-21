@@ -3,7 +3,8 @@ import logging
 import sys
 from typing import List
 from langchain_core.tools import tool
-from pydantic import BaseModel, Field
+from langchain_core.pydantic_v1 import BaseModel, Field
+#from pydantic import BaseModel, Field
 from state.session import get_websocket
 import stripe
 from state.session import set_stripe_order_id, set_paypal_order_id
