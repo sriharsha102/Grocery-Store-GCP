@@ -10,11 +10,12 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
-
+from langchain.tools.render import render_text_description
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.memory import ConversationBufferMemory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from routers.inventory import router as inventory_router
 
 # Routers
 from routers.fedex import router as fedex_router
@@ -155,29 +156,50 @@ async def websocket_endpoint(ws: WebSocket, session_id: str):
 
 def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
     tools = get_all_tools()
+   
+    def _escape_braces(s: str) -> str:
+        return s.replace("{", "{{").replace("}", "}}")
+
+    tool_list = "\n".join(
+        f"- {getattr(t, 'name', 'tool')}: {_escape_braces(getattr(t, 'description', '').strip())}"
+        for t in tools
+    )
+
+
+
+    system_prompt = (
+        "You are a friendly, concise AI assistant for an e-commerce shop called Chai Corner.\n\n"
+        "What to do\n"
+        "- Help users browse items, add/remove from cart, and checkout.\n"
+        "- Never invent product names, prices, or stock. Always rely on tools.\n"
+        "- No login; treat every user as a guest.\n"
+        "- After successful payment, send email the receipt and update inventory in Google Sheets; "
+        "do not paste the full invoice in chat.\n\n"
+        "Tools you can call:\n"
+        f"{tool_list}\n\n"
+        "Exact flow\n"
+        "1) Greeting: short hello and offer help. If they ask for menu/popular/top sellers, call get_top_sellers. "
+        "If they ask for a specific item, use products_tool to verify name and price.\n"
+        "2) Browse & Cart: use products_tool to validate items; then add_to_cart/remove_from_cart/view_cart/clear_cart. "
+        "If quantity is unclear, ask one crisp follow-up.\n"
+        "3) Checkout: before triggering payment, always call view_cart, then generate_summary to produce cart_items; "
+        "then call trigger_payment_tool and share the checkout link only.\n"
+        "4) Verify payment: if user says they paid, call stripe_checkout_status_tool. If not paid, say so and stop. "
+        "If paid, acknowledge and proceed.\n"
+        "5) After payment: Ask the user to share the email id for receipt and call place_order with the customer email and final line items (name and qty) to update Sheets; "
+        "send receipt email to the owner; if any item is low stock (≤10), send a low-stock alert to the owner. "
+        "Then confirm the order to the user.\n\n"
+        "Output style\n"
+        "- Be brief and step-by-step.\n"
+        "- When you used tools, summarize the result (top 5, cart items, payment status).\n"
+        "- Never expose raw tool payloads or IDs unless asked."
+    )
+
     llm = ChatOpenAI(model=OPENAI_API_MODEL, temperature=0, openai_api_key=OPENAI_API_KEY)
-    
-
-    SYSTEM_PROMPT = SYSTEM_PROMPT = """
-        You are a friendly and helpful AI assistant for an e-commerce business called Chai Corner.
-        Your goal is to help customers find products, add them to a cart, and complete their purchase.
-        Be conversational and guide the user step-by-step. Do not make up product IDs or prices. Only use the information provided by the tools.
-
-        Here are the tools you have access to:
-        {{tools}}
-
-        Follow this process:
-        1.  Greet the user. Ask if they need help finding anything.
-        2. If the user asks about products, use `products_tool`.
-        3. When adding items to the cart, make sure to use `products_tool` to check if it is a valid item. If it is valid, add the exact quantity/quantities of the exact item(s) the user requested to the cart using `add_to_cart` tool. Use the other cart tools to remove items, view cart and clear cart.
-        5. If the user wants to proceed to payment, you must use `view_cart` tool and `generate_summary` tool to provide cart_items to `trigger_payment_tool` tool.
-        6. If the user claims to have paid, use `stripe_checkout_status_tool` tool to see if payment has been made. DO NOT move on to the next step if the payment has not been made. Let customer know they still have to pay if that is the case.
-        7. Once payement is conformed, convey to user and ask "Is there anything else I can assist you with today?"
-    """
 
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", SYSTEM_PROMPT),
+            ("system", system_prompt),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
@@ -213,6 +235,7 @@ async def chat_endpoint(request: ChatRequest):
 # ──────────────────────────────────────────────────────────────────────────────
 # Routers
 # ──────────────────────────────────────────────────────────────────────────────
+app.include_router(inventory_router)
 app.include_router(applepay_router)
 app.include_router(paypal_router)
 app.include_router(fedex_router)
