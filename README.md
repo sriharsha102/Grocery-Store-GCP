@@ -45,6 +45,9 @@ npm run build
 ```
 ## 5. To copy frontend/dist to backend/static run the following commands:
 ```bash
+//remove backend/static folder if it exists and recreate it with contents from frontend/dist
+           rm -rf backend/static
+           
            mkdir -p backend/static
            cp -R frontend/dist/* backend/static/
 #Remove-Item "backend\static" -Recurse -Force -toRemove the folder

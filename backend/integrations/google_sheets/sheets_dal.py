@@ -120,70 +120,122 @@ def get_top5_by_orders() -> List[Dict]:
     items.sort(key=lambda x: x.get("orders_count", 0), reverse=True)
     return items[:5]
 
+# integrations/google_sheets/sheets_dal.py
+
 def decrement_quantities(order_items: List[Tuple[str, int]]) -> Dict:
     """
-    Decrement 'quantity' and increment 'orders_count' for the given items.
-    Returns:
-      {
-        "updated": [{"name", "decremented", "new_qty", "low_stock"}...],
-        "out_of_stock": [...]
-      }
+    order_items: [("Madras Coffee", 2), ("Buttermilk", 1), ...]
+    We:
+    - check availability (case-insensitive match)
+    - decrement quantity
+    - increment orders_count
+    - return out_of_stock if any problem
     """
     svc = _svc()
     hdr, rows = _read_all()
-    header = [h.strip().lower() for h in hdr]
 
-    if "name" not in header or "quantity" not in header or "orders_count" not in header:
-        raise RuntimeError("Sheet must contain 'name', 'quantity', and 'orders_count' headers")
+    # figure out which column is which
+    # expected headers: name | quantity | (maybe price) | date | orders_count
+    # but we don't assume order, we look them up dynamically:
+    try:
+        name_idx = hdr.index("name")
+    except ValueError:
+        raise RuntimeError("Sheet missing 'name' column")
 
-    name_idx = header.index("name")
-    qty_idx  = header.index("quantity")
-    oc_idx   = header.index("orders_count")
+    try:
+        qty_idx = hdr.index("quantity")
+    except ValueError:
+        raise RuntimeError("Sheet missing 'quantity' column")
 
-    # Build index: item name -> (row_num (1-based), row_values)
-    # We started reading at A2, so the first data row is row 2 in the sheet.
-    idx: Dict[str, Tuple[int, list[str]]] = {}
+    # orders_count might exist
+    oc_idx = None
+    if "orders_count" in hdr:
+        oc_idx = hdr.index("orders_count")
+
+    # Build lookup dict of item name -> (rownum, row_values) in LOWERCASE
+    # rownum here is the actual sheet row number (starts at 2 because row 1 is header)
+    idx = {}
     for i, r in enumerate(rows, start=2):
-        r = r + [""] * (len(header) - len(r))
-        idx[r[name_idx]] = (i, r)
+        # pad row so indexes are safe to access
+        padded = r + [""] * (len(hdr) - len(r))
+        item_name = str(padded[name_idx]).strip()
+        if item_name:
+            idx[item_name.lower()] = (i, padded)
 
-    # Check stock first
-    oos, updates, result = [], [], []
+    # Verify availability first
+    oos = []
+    normalized_orders = []  # list of tuples: (norm_key, want_qty)
     for name, want in order_items:
-        if name not in idx:
+        key = str(name).strip().lower()
+        if key not in idx:
             oos.append({"name": name, "reason": "not_found"})
             continue
-        _, row = idx[name]
-        have = _to_int(row[qty_idx])
+        _, row = idx[key]
+        have = int(row[qty_idx] or 0)
         if have < want:
             oos.append({"name": name, "reason": f"only {have} left"})
+        else:
+            normalized_orders.append((key, want))
+
     if oos:
+        # we DO NOT mutate sheet if anything is invalid
         return {"updated": [], "out_of_stock": oos}
 
+    # Build batchUpdate payload
+    updates = []
+    result = []
+
+    sheet_id = _sheet_id()
     tab = _tab()
-    for name, want in order_items:
-        rownum, row = idx[name]
-        have = _to_int(row[qty_idx])
-        new_qty = have - want
-        new_oc  = _to_int(row[oc_idx]) + want
 
-        qty_col_letter = _col_letter(qty_idx)   # 0-based -> letter
-        oc_col_letter  = _col_letter(oc_idx)    # 0-based -> letter
+    for key, want in normalized_orders:
+        rownum, row = idx[key]
 
-        updates.append({"range": f"{tab}!{qty_col_letter}{rownum}", "values": [[new_qty]]})
-        updates.append({"range": f"{tab}!{oc_col_letter}{rownum}",  "values": [[new_oc]]})
+        # quantity math
+        have_qty = int(row[qty_idx] or 0)
+        new_qty = have_qty - want
+
+        # orders_count math
+        if oc_idx is not None:
+            have_oc = int(row[oc_idx] or 0)
+            new_oc = have_oc + want
+        else:
+            new_oc = None
+
+        # queue spreadsheet writes
+        # quantity column
+        qty_col_letter = chr(ord("A") + qty_idx)   # crude A/B/C... for up to Z
+        updates.append({
+            "range": f"{tab}!{qty_col_letter}{rownum}",
+            "values": [[new_qty]]
+        })
+
+        # orders_count column (if it exists)
+        if oc_idx is not None:
+            oc_col_letter = chr(ord("A") + oc_idx)
+            updates.append({
+                "range": f"{tab}!{oc_col_letter}{rownum}",
+                "values": [[new_oc]]
+            })
 
         result.append({
-            "name": name,
+            "name": row[name_idx],
             "decremented": want,
             "new_qty": new_qty,
             "low_stock": new_qty <= 10
         })
 
+    # Actually write changes
     if updates:
         svc.values().batchUpdate(
-            spreadsheetId=_sheet_id(),
-            body={"valueInputOption": "USER_ENTERED", "data": updates}
+            spreadsheetId=sheet_id,
+            body={
+                "valueInputOption": "USER_ENTERED",
+                "data": updates
+            }
         ).execute()
 
-    return {"updated": result, "out_of_stock": []}
+    return {
+        "updated": result,
+        "out_of_stock": []
+    }

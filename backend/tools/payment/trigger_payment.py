@@ -1,166 +1,218 @@
 import os
 import logging
 import sys
-from typing import List
+from typing import List, Dict, Any
 from langchain_core.tools import tool
 from langchain_core.pydantic_v1 import BaseModel, Field
-#from pydantic import BaseModel, Field
-from state.session import get_websocket
-import stripe
-from state.session import set_stripe_order_id, set_paypal_order_id
+from state.session import get_websocket, set_stripe_order_id, set_paypal_order_id
 
+import stripe
 import paypalrestsdk
+
+# NEW: instead of HTTP requests.get(...), we import the sheet DAL directly
+from integrations.google_sheets.sheets_dal import get_menu
+
+log = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
+)
+
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 try:
     paypalrestsdk.configure({
-        "mode": os.getenv("PAYPAL_MODE", "sandbox"),  # "sandbox" or "live"
+        "mode": os.getenv("PAYPAL_MODE", "sandbox"),
         "client_id": os.getenv("PAYPAL_CLIENT_ID"),
-        "client_secret": os.getenv("PAYPAL_CLIENT_SECRET")
+        "client_secret": os.getenv("PAYPAL_CLIENT_SECRET"),
     })
     print("PayPal SDK configured successfully.")
 except Exception as e:
     print(f"Error configuring PayPal SDK: {e}")
 
-# --- Environment Setup ---
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-# --- Logging Setup ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    stream=sys.stdout,
-)
-
-# --- Pydantic Models ---
 class CartItem(BaseModel):
-    name: str = Field(..., description="The full name of the product.")
-    quantity: int = Field(..., description="How many units of the product are in the cart.")
-    price: float = Field(..., description="The price for a single unit of the product.")
+    name: str = Field(..., description="Exact product name from the menu.")
+    quantity: int = Field(..., gt=0, description="Quantity requested.")
+    price: float = Field(..., gt=0, description="Unit price that the agent thinks is correct.")
 
 class TriggerPaymentArgs(BaseModel):
-    cart_items: List[CartItem] = Field(..., description="A complete list of items to be purchased.")
-    session_id: str = Field(..., description="Session ID.")
+    cart_items: List[CartItem] = Field(..., description="Items to charge for right now only.")
+    session_id: str = Field(..., description="Session ID for this user/chat.")
 
+
+def _fetch_menu_direct() -> List[Dict[str, Any]]:
+    """
+    Directly call the Sheets DAL instead of hitting our own HTTP endpoint.
+    This avoids the 127.0.0.1 timeout / re-entrancy problem.
+    get_menu() already returns a list like:
+    [
+      { "name": "Madras Coffee", "price": 20.0, "quantity": 6, ... },
+      ...
+    ]
+    """
+    items = get_menu()
+    # routers.inventory.menu() wraps this as {"items": get_menu()}
+    # We just want that list.
+    return items
+
+
+def _validate_cart_against_sheet(
+    cart_items: List[CartItem],
+    menu_items: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Check each requested item against live sheet data:
+    - item exists (case-insensitive match)
+    - enough stock
+    - price didn't change
+    """
+    problems = []
+    sheet_lookup = {row["name"].strip().lower(): row for row in menu_items}
+
+    for line in cart_items:
+        wanted_key = line.name.strip().lower()
+        sheet_row = sheet_lookup.get(wanted_key)
+        if not sheet_row:
+            problems.append({
+                "name": line.name,
+                "reason": "not_found_in_menu"
+            })
+            continue
+
+        sheet_qty = int(sheet_row.get("quantity", 0))
+        sheet_price = float(sheet_row.get("price", 0))
+
+        if line.quantity > sheet_qty:
+            problems.append({
+                "name": line.name,
+                "reason": f"only {sheet_qty} left"
+            })
+
+        # protect against stale price in agent memory
+        if float(line.price) != sheet_price:
+            problems.append({
+                "name": line.name,
+                "reason": f"price_changed_to_{sheet_price}"
+            })
+
+    if problems:
+        return {"ok": False, "problems": problems}
+    return {"ok": True}
 
 
 @tool(args_schema=TriggerPaymentArgs)
 async def trigger_payment(cart_items: List[CartItem], session_id: str):
     """
-    Creates a Stripe PaymentIntent and sends its client_secret to the user's
-    WebSocket to initialize an embedded payment form.
+    1. Pull live sheet inventory/prices.
+    2. Validate the cart (stock + price).
+    3. If OK, create Stripe embedded checkout session and send client_secret
+       over the session websocket.
+    4. If not OK, DO NOT create checkout; return an 'unavailable' error
+       so the agent can tell the user and stop.
     """
-    logging.info(f"Attempting to create PaymentIntent for session_id: {session_id}")
+
+    log.info("trigger_payment called for session_id=%s", session_id)
 
     if not stripe.api_key:
-        logging.error("Stripe API key is not configured.")
-        return "Error: Payment processor is not configured. Please set the STRIPE_API_KEY environment variable."
+        log.error("Stripe API key is not configured.")
+        return {
+            "error": "stripe_not_configured",
+            "message": "Payment processor is not configured. Missing STRIPE_SECRET_KEY.",
+        }
 
     ws = get_websocket(session_id)
     if not ws:
-        logging.warning(f"No active WebSocket for session {session_id}.")
-        return "Something went wrong. No active WebSocket for this session."
+        log.warning("No active WebSocket for session %s.", session_id)
+        return {
+            "error": "no_websocket",
+            "message": "No active WebSocket for this session. Cannot initialize payment UI.",
+        }
 
-
+    # 1. get fresh menu directly from Sheets (no HTTP call)
     try:
-        # # Format line items for the Checkout Session API
-        # items = []
-        # total = 0
-        # for item in cart_items:
-        #     items.append({
-        #         'name': item.name,
-        #         'price': f"{item.price:.2f}",
-        #         'currency': 'USD',
-        #         'quantity': item.quantity
-        #     })
-        #     total += item.price
-            
-            
-            
-        # payment = paypalrestsdk.Payment({
-        #     "intent": "sale",  # The intent of the payment (sale, authorize, or order)
-        #     "payer": {
-        #         "payment_method": "paypal"
-        #     },
-        #     "redirect_urls": {
-        #         # URLs where the user will be redirected after payment approval or cancellation
-        #         "return_url": "https://lightningminds.com/success",
-        #         "cancel_url": "https://lightningminds.com/cancel"
-        #     },
-        #     "transactions": [{
-        #         "item_list": {
-        #             "items": items
-        #         },
-        #         "amount": {
-        #             "total": f"{total:.2f}",
-        #             "currency": "USD"
-        #         },
-        #         "description": "Chai Corner Order."
-        #     }]
-        # })
-        # approval_url = ''
-        # if payment.create():
-        #     print(f"Payment created successfully. ID: {payment.id}")
-            
-        #     logging.info(f"PAYPAL ID: {payment.id}")
-        #     set_paypal_order_id(payment.id)
-        #     # Find the approval URL in the links provided by the PayPal response
-        #     for link in payment.links:
-        #         if link.rel == "approval_url":
-        #             approval_url = str(link.href)
-        #             # return {"approval_url": approval_url, "payment_id": payment.id}
-        #     # If no approval URL is found, raise an error
-        #     # raise Exception(status_code=500, detail="Could not find PayPal approval URL.")
-        # else:
-        #     # If the payment creation fails, log the error and raise an exception
-        #     print(f"Error creating payment: {payment.error}")
-        #     # raise Exception(status_code=400, detail=payment.error)
-        
-        # Format line items for the Checkout Session API
-        line_items = []
-        for item in cart_items:
-            line_items.append({
-                'price_data': {
-                    'currency': 'usd',
-                    'product_data': {
-                        'name': item.name,
-                    },
-                    'unit_amount': int(item.price * 100),
-                },
-                'quantity': item.quantity,
-            })
-            
-        
-        logging.info(f"Line items: {line_items}")
+        menu_items = _fetch_menu_direct()
+    except Exception as e:
+        log.exception("Failed to read menu from Sheets before checkout.")
+        return {
+            "error": "menu_fetch_failed",
+            "message": f"Could not confirm stock/price before payment: {e}",
+        }
 
+    # 2. validate against sheet
+    check = _validate_cart_against_sheet(cart_items, menu_items)
+    if not check["ok"]:
+        log.warning(
+            "Stock/price validation failed for session %s: %s",
+            session_id,
+            check["problems"],
+        )
+        return {
+            "error": "unavailable",
+            "details": check["problems"],
+        }
+
+    # 3. Build Stripe line_items
+    line_items = []
+    for item in cart_items:
+        amount_cents = int(round(item.price * 100))
+        line_items.append({
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": item.name,
+                },
+                "unit_amount": amount_cents,
+            },
+            "quantity": item.quantity,
+        })
+    log.info("Line items for Stripe: %s", line_items)
+
+    # 4. Create Stripe embedded Checkout Session
+    try:
         checkout_session = stripe.checkout.Session.create(
             line_items=line_items,
-            mode='payment',
-            ui_mode='embedded',
-            # billing_address_collection='auto',
-            billing_address_collection='required',
-            # Return_url for post-payment redirects
-            # return_url=f'http://localhost:8080'
-            redirect_on_completion='never'
+            mode="payment",
+            ui_mode="embedded",
+            billing_address_collection="required",
+            redirect_on_completion="never",
+            metadata={"chat_session_id": session_id},
         )
-        
-        logging.info(f"Stripe Checkout Session created: {checkout_session.id}")
-        set_stripe_order_id(session_id, checkout_session.id) # Save the Stripe checkout order ID for later
-        
-        print(f"\n💳 Apple Pay Link Generated: {checkout_session.url}\n")
+    except Exception as e:
+        log.exception("Stripe Checkout Session creation failed.")
+        return {
+            "error": "stripe_error",
+            "message": f"Could not create Stripe Checkout session: {e}",
+        }
 
+    log.info("Stripe Checkout Session created: %s", checkout_session.id)
+    print(f"\n💳 Apple Pay Link Generated: {checkout_session.url}\n")
+
+    # save checkout_session.id for stripe_checkout_status_tool later
+    set_stripe_order_id(session_id, checkout_session.id)
+
+    # 5. send client_secret back over WS so frontend can render the embedded checkout
+    try:
         message = {
             "type": "payment_intent_created",
             "client_secret": checkout_session.client_secret,
-            # "paypal_order_id": payment.id
         }
         await ws.send_json(message)
-
-        # The tool returns a confirmation that the payment process has been initiated.
-        return f"Payment form initialized for session {session_id}. Let user know, 'The payment form has been initialized.'. DO NOT ask customer to let you know once they are finished paying"
-
     except Exception as e:
-        logging.error(f"Failed to create Stripe PaymentIntent: {e}")
-        return f"Error: Could not create a payment session. Details: {e}"
+        log.exception("Failed to send client_secret over websocket.")
+        return {
+            "error": "websocket_send_failed",
+            "message": f"Payment created, but failed to notify client: {e}",
+            "stripe_session_id": checkout_session.id,
+        }
+
+    # 6. final LLM text
+    return (
+        "Payment form has been initialized. Tell the user: "
+        "'The payment form has been initialized. Please complete your payment.' "
+        "Do NOT ask them to tell you when they're done."
+    )
 
 
 trigger_payment_tool = trigger_payment

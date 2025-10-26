@@ -1,94 +1,86 @@
 # backend/tools/sheets/place_order_tool.py
-import os, requests
+
+import os
+import requests
 from typing import List
 from pydantic.v1 import BaseModel, Field, EmailStr
 from langchain.tools import tool
 
 BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")
 
-# Email config (from .env)
-EMAIL_MODE = os.getenv("EMAIL_MODE", "APPS_SCRIPT")  # APPS_SCRIPT | OFF
-OWNER_EMAIL = os.getenv("OWNER_EMAIL")               # e.g. developer@domain.com
-APPS_SCRIPT_EMAIL_URL = os.getenv("APPS_SCRIPT_EMAIL_URL")  # deployed Web App "exec" URL
-EMAIL_WEBHOOK_SECRET = os.getenv("EMAIL_WEBHOOK_SECRET")     # same secret you used in Apps Script
-
 class LineItem(BaseModel):
     name: str = Field(..., description="Exact product name")
     qty: int = Field(..., gt=0, description="Quantity ordered")
 
 class PlaceOrderArgs(BaseModel):
-    customer_email: EmailStr = Field(..., description="Customer email for receipt")
-    items: List[LineItem] = Field(..., description="Line items")
+    session_id: str = Field(
+        ...,
+        description="The active chat session id. Used to clear the correct cart after a PAID order."
+    )
+    customer_email: EmailStr = Field(
+        ...,
+        description="Customer email where the receipt should be sent."
+    )
+    items: List[LineItem] = Field(
+        ...,
+        description="Line items for THIS finalized purchase only (not past orders)."
+    )
 
 @tool("place_order", args_schema=PlaceOrderArgs)
-def place_order(customer_email: str, items: List[LineItem]) -> dict:
+def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> dict:
     """
-    Confirm an order in Sheets, then send emails via Apps Script (if configured).
+    FINALIZE a *paid* order.
+
+    What this does (server side via /api/inventory/finalize):
+    - Validates stock in Sheets (case-insensitive match, so 'buttermilk' == 'Buttermilk')
+    - Decrements quantity & increments orders_count
+    - Sends receipt email to customer + copy/low-stock alert to owner
+    - Clears the user's cart for this session_id so old items won't get re-charged
+
+    The tool should be called ONLY AFTER:
+    1. stripe_checkout_status_tool confirms status == 'paid'
+    2. you asked the user for their email
+    3. you pass ONLY the items they just paid for
     """
-    # 1) Place order / update Sheets
+
     payload = {
+        "session_id": session_id,
         "customer_email": customer_email,
         "items": [{"name": i.name, "qty": i.qty} for i in items],
     }
-    endpoints = ["/api/inventory/order", "/inventory/order"]
-    order_result = None
-    attempts = []
 
-    for path in endpoints:
-        try:
-            r = requests.post(f"{BASE}{path}", json=payload, timeout=20)
-            if r.status_code == 200:
-                try:
-                    order_result = r.json()
-                    break
-                except Exception:
-                    attempts.append({"path": path, "status": r.status_code, "body": r.text})
-            else:
-                attempts.append({"path": path, "status": r.status_code, "body": r.text})
-        except Exception as e:
-            attempts.append({"path": path, "error": str(e)})
+    # Hit the new finalize endpoint (single source of truth)
+    url = f"{BASE}/api/inventory/finalize"
+    try:
+        r = requests.post(url, json=payload, timeout=20)
+    except Exception as e:
+        return {
+            "error": "finalize request failed",
+            "exception": str(e),
+            "url": url,
+            "payload": payload,
+        }
 
-    if not order_result:
-        return {"error": "place_order failed", "attempts": attempts}
+    # Try to parse response
+    try:
+        data = r.json()
+    except Exception:
+        data = {"raw_text": r.text}
 
-    # 2) Send emails (Apps Script webhook) if enabled
-    email_attempt = None
-    owner_alert_attempt = None
+    if r.status_code == 200:
+        # Success case
+        return {
+            "order": data,
+            "status": "CONFIRMED",
+            "cart_cleared": True,
+            "email_sent": True,   # finalize endpoint is responsible for emailing
+        }
 
-    if EMAIL_MODE.upper() == "APPS_SCRIPT" and APPS_SCRIPT_EMAIL_URL and EMAIL_WEBHOOK_SECRET:
-        try:
-            # Receipt to customer (and CC owner if your script does that)
-            email_payload = {
-                "secret": EMAIL_WEBHOOK_SECRET,
-                "type": "receipt",
-                "order": {
-                    "order_id": order_result.get("order_id"),
-                    "customer_email": customer_email,
-                    "items": [{"name": i.name, "qty": i.qty} for i in items],
-                },
-                "owner_email": OWNER_EMAIL,
-            }
-            er = requests.post(APPS_SCRIPT_EMAIL_URL, json=email_payload, timeout=20)
-            email_attempt = {"status": er.status_code, "text": er.text}
-
-            # Low-stock alert to owner if any item is low
-            updated = order_result.get("updated", []) or []
-            low = [u for u in updated if u.get("low_stock")]
-            if low and OWNER_EMAIL:
-                warn_payload = {
-                    "secret": EMAIL_WEBHOOK_SECRET,
-                    "type": "low_stock",
-                    "owner_email": OWNER_EMAIL,
-                    "items": low,
-                }
-                wr = requests.post(APPS_SCRIPT_EMAIL_URL, json=warn_payload, timeout=20)
-                owner_alert_attempt = {"status": wr.status_code, "text": wr.text}
-        except Exception as e:
-            email_attempt = {"error": str(e)}
-
+    # Failure (e.g. out-of-stock race condition)
     return {
-        "order": order_result,
-        "email_mode": EMAIL_MODE,
-        "email_attempt": email_attempt,
-        "owner_alert_attempt": owner_alert_attempt,
+        "error": "finalize failed",
+        "status_code": r.status_code,
+        "response": data,
+        "cart_cleared": False,
+        "email_sent": False,
     }
