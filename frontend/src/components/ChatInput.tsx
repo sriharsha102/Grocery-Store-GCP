@@ -45,7 +45,7 @@ export const ChatInput = ({ onSendMessage, isLoading = false, messages }: ChatIn
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
                             onKeyPress={handleKeyPress}
-                            placeholder="Ask about products, recommendations, or anything else..."
+                            placeholder="Ask about products, add to cart, and proceed to payment..."
                             className="min-h-[44px] resize-none border-message-border focus:ring-primary/20 focus:border-primary transition-all duration-200"
                             disabled={isLoading}
                             autoFocus

@@ -25,7 +25,7 @@ export const ChatWindow = ({ messages }: ChatWindowProps) => {
                             <span className="text-2xl">🫖</span>
                         </div>
                         <h2 className="text-xl font-semibold text-foreground mb-2">
-                            Welcome to Chai Corner
+                            Welcome to Bharat Bazar
                         </h2>
                         <p className="text-muted-foreground max-w-sm">
                             Enter your name to get started or continue as guest!

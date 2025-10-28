@@ -88,7 +88,7 @@ const Index = () => {
         const timer = setTimeout(() => {
             const inititalMessage: Message = {
                 id: Date.now().toString(),
-                text: "Welcome to Chai Corner! How can I help you today? You can ask me about our products, add items to your cart, and proceed to checkout when you're ready.",
+                text: "Welcome to Bharat Bazar! How can I help you today? You can ask me about our products, add items to your cart, and proceed to checkout when you're ready.",
                 sender: 'assistant',
                 timestamp: new Date()
             };
@@ -172,7 +172,7 @@ const Index = () => {
                             <span className="text-sm">🫖</span>
                         </div>
                         <div>
-                            <h1 className="font-semibold text-foreground">Chai Corner</h1>
+                            <h1 className="font-semibold text-foreground">Bharat Bazar</h1>
                             <p className="text-xs text-muted-foreground">AI E-commerce Assistant</p>
                         </div>
                     </div>

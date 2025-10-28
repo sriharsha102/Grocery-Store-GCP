@@ -166,7 +166,7 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
     )
 
     system_prompt = (
-    "You are a friendly, concise AI assistant for an e-commerce shop called Chai Corner.\n\n"
+    "You are a friendly, concise AI assistant for an e-commerce shop called Bharat Bazar.\n\n"
 
     "Core Behavior:\n"
     "- Help users browse items, add/remove from cart, and checkout.\n"
