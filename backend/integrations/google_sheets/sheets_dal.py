@@ -70,35 +70,94 @@ def _read_all() -> tuple[list[str], list[list[str]]]:
 
 def _rows_as_dicts() -> List[Dict[str, Any]]:
     """
-    Use the sheet header to build dicts; normalize numeric fields.
+    Read all rows from the Inventory sheet, map header -> value,
+    and normalize some known columns so downstream code can trust the shape.
+
+    Output keys:
+      - name (str)
+      - price (float)
+      - quantity (int)
+      - date (str, untouched)
+      - orders_count (int)
+      - top_selling (str: "Y"/"N"/"")
+      - sale (str promo text or "")
+
+    We still include ANY other columns in the sheet automatically too,
+    because we start from the raw header dict.
     """
     hdr, rows = _read_all()
     header = [h.strip().lower() for h in hdr]
     out: List[Dict[str, Any]] = []
 
-    # Find column indices by header (case-insensitive)
-    try:
-        name_idx = header.index("name")
-    except ValueError:
-        name_idx = 0
-    price_idx = header.index("price") if "price" in header else None
-    qty_idx   = header.index("quantity") if "quantity" in header else None
-    oc_idx    = header.index("orders_count") if "orders_count" in header else None
+    # find column indices we care about
+    def safe_idx(col_name: str):
+        try:
+            return header.index(col_name)
+        except ValueError:
+            return None
+
+    name_idx         = safe_idx("name")
+    price_idx        = safe_idx("price")
+    qty_idx          = safe_idx("quantity")
+    date_idx         = safe_idx("date")
+    oc_idx           = safe_idx("orders_count")
+    top_selling_idx  = safe_idx("top_selling_items")
+    sale_idx         = safe_idx("sales")
 
     for r in rows:
+        # pad in case row shorter than header
         r = r + [""] * (len(header) - len(r))
+
+        # start with raw mapping of EVERY column
         rec = {header[i]: r[i] for i in range(len(header))}
-        # normalize
+
+        # normalize common/critical fields
+        # name
+        if name_idx is not None:
+            rec["name"] = str(r[name_idx]).strip()
+        else:
+            rec["name"] = str(rec.get("name", "")).strip()
+
+        # price -> float
         if price_idx is not None:
+            rec["price"] = _to_float(r[price_idx])
+        else:
             rec["price"] = _to_float(rec.get("price"))
+
+        # quantity -> int
         if qty_idx is not None:
+            rec["quantity"] = _to_int(r[qty_idx])
+        else:
             rec["quantity"] = _to_int(rec.get("quantity"))
+
+        # date (leave as-is string)
+        if date_idx is not None:
+            rec["date"] = str(r[date_idx]).strip()
+        # else: leave whatever was already in rec["date"] if present
+
+        # orders_count -> int
         if oc_idx is not None:
+            rec["orders_count"] = _to_int(r[oc_idx])
+        else:
             rec["orders_count"] = _to_int(rec.get("orders_count"))
-        # keep date as string if present
-        rec["name"] = str(rec.get("name", "")).strip()
+
+        # top_selling_items -> normalized key "top_selling"
+        if top_selling_idx is not None:
+            rec["top_selling"] = str(r[top_selling_idx]).strip()
+        else:
+            # fall back to whatever key may already exist
+            rec["top_selling"] = str(rec.get("top_selling_items", "")).strip()
+
+        # sales -> normalized key "sale"
+        if sale_idx is not None:
+            rec["sale"] = str(r[sale_idx]).strip()
+        else:
+            rec["sale"] = str(rec.get("sales", "")).strip()
+
+        # finally, only include non-empty name rows
         if rec["name"]:
             out.append(rec)
+
     return out
 
 
@@ -108,7 +167,7 @@ def _rows_as_dicts() -> List[Dict[str, Any]]:
 
 def get_menu() -> List[Dict]:
     """
-    Returns all inventory rows with numeric price/quantity/orders_count.
+    Returns full inventory rows with normalized fields.
     """
     return _rows_as_dicts()
 

@@ -2,6 +2,7 @@ from langchain.agents import Tool
 import logging
 from tools.sheets.get_top_sellers_tool import get_top_sellers
 from tools.sheets.place_order_tool import place_order
+from tools.sheets.finalize_stock_tool import finalize_stock
 from tools.cart.cart_tool import cart_tools
 
 from tools.product.products_tool import products_tool
@@ -23,13 +24,13 @@ def get_all_tools() -> list[Tool]:
     tools = (
         cart_tools
         + [
-            
             products_tool,
             fedex_tool,
             generate_summary,
             trigger_payment_tool,
             stripe_checkout_status_tool,
             get_top_sellers,   # ← NEW (reads top 5 from Sheets)
+            finalize_stock,
             place_order       # ← NEW (decrement Sheet + send emails)
         ]
         + order_tools

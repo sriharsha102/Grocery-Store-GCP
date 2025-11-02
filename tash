@@ -1,0 +1,26 @@
+[1mdiff --git a/backend/main.py b/backend/main.py[m
+[1mindex 8264b8a..4ca1755 100644[m
+[1m--- a/backend/main.py[m
+[1m+++ b/backend/main.py[m
+[36m@@ -191,17 +191,18 @@[m [mdef create_agent(memory: ConversationBufferMemory) -> AgentExecutor:[m
+     "- Before adding anything to the cart, confirm the item exists and is in stock using `get_products`.\n"[m
+     "- Then update the cart using `add_to_cart`, `remove_from_cart`, `view_cart`, and `clear_cart`.\n"[m
+     "- Normalize item names to lowercase when using the cart tools.\n"[m
+[31m-    "- If the requested quantity isn't clear, ask one short follow-up question.\n\n"[m
+[32m+[m[32m    "- If the requested quantity isn't clear, ask one short follow-up question.\n"[m
+[32m+[m[32m    "- After adding, you MUST call view_cart and then summarize ONLY the tool output. Do NOT invent items.\n\n"[m
+ [m
+     "3) Pre-checkout (before payment):\n"[m
+     "- Call `view_cart` to see what's in the cart.\n"[m
+     "- For each item in the cart, confirm it's still in stock and that the requested quantity is available. "[m
+[31m-    "Use `get_products` for the latest stock/price.\n"[m
+[32m+[m[32m    "- Use `get_products` for the latest stock/price.\n"[m
+     "- If anything is out of stock or not available in the requested quantity, tell the user and STOP checkout.\n"[m
+     "- If everything is available, call `generate_summary` to build a cost breakdown for the CURRENT cart.\n"[m
+     "- Then start payment by calling `trigger_payment_tool` with ONLY the current cart items.\n"[m
+     "- After that, tell the user that the payment form or payment link is ready. "[m
+[31m-    "Do not show raw tool payloads or Stripe IDs.\n\n"[m
+[32m+[m[32m    "- Do not show raw tool payloads or Stripe IDs.\n\n"[m
+ [m
+     "4) Payment Verification:\n"[m
+     "- When the user says they paid, call `stripe_checkout_status_tool`.\n"[m

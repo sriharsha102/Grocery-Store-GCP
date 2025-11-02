@@ -28,7 +28,7 @@ export const ChatWindow = ({ messages }: ChatWindowProps) => {
                             Welcome to Bharat Bazar
                         </h2>
                         <p className="text-muted-foreground max-w-sm">
-                            Enter your name to get started or continue as guest!
+                            View menu, add to cart and proceed with payment!
                         </p>
                     </div>
                 </div>

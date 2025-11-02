@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Any
 from dotenv import load_dotenv
+#from tools.cart import clear_cart, view_cart
 
 load_dotenv()
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
@@ -37,18 +38,22 @@ class OrderItem(BaseModel):
     name: str
     qty: int
 
-
 class OrderRequest(BaseModel):
     customer_email: EmailStr
     items: List[OrderItem]
-
 
 class FinalizeOrderRequest(BaseModel):
     session_id: str
     customer_email: EmailStr
     items: List[OrderItem]
 
+class FinalizeStockRequest(BaseModel):
+    session_id: str
+    items: List[OrderItem]
 
+class FinalizeReceiptRequest(BaseModel):
+    session_id: str
+    customer_email: EmailStr
 # ---------- Read-only endpoints ----------
 
 @router.get("/top5")
@@ -273,4 +278,126 @@ def finalize(req: FinalizeOrderRequest):
         "low_stock_sent": low_stock_sent,
         "email_debug": email_debug,
         "low_debug": low_debug,
+    }
+
+    # ==============================
+#  NEW ENDPOINT #1: finalize_stock
+# ==============================
+
+@router.post("/finalize_stock")
+def finalize_stock(req: FinalizeStockRequest):
+    """
+    Step 1: Called immediately after Stripe confirms payment.
+    - Decrements stock & bumps orders_count in Sheets.
+    - Sends low-stock alert if needed.
+    - DOES NOT send receipt yet (email not known).
+    """
+    if not req.items:
+        raise HTTPException(status_code=400, detail="No items provided")
+
+    for it in req.items:
+        if it.qty <= 0:
+            raise HTTPException(status_code=400, detail=f"Invalid qty for {it.name}")
+
+    try:
+        result = decrement_quantities([(it.name, it.qty) for it in req.items])
+    except Exception as e:
+        log.exception("finalize_stock(): decrement_quantities crashed")
+        raise HTTPException(status_code=500, detail=f"Sheet update failed: {e}")
+
+    # Handle rare out-of-stock race condition
+    if result.get("out_of_stock"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Some items unavailable after payment.",
+                "details": result["out_of_stock"],
+            },
+        )
+
+    order_id = f"ORD-{int(time.time())}"
+
+    # --- Send only low-stock alerts here ---
+    low_stock_sent = False
+    low_debug = {}
+    if EMAIL_MODE == "APPS_SCRIPT" and APPS_SCRIPT_EMAIL_URL and EMAIL_WEBHOOK_SECRET:
+        updated_list = result.get("updated", []) or []
+        low_items = [u for u in updated_list if u.get("low_stock")]
+
+        if low_items and OWNER_EMAIL:
+            low_payload = {
+                "secret": EMAIL_WEBHOOK_SECRET,
+                "type": "low_stock",
+                "owner_email": OWNER_EMAIL,
+                "items": [{"name": u["name"], "new_qty": u["new_qty"]} for u in low_items],
+            }
+            try:
+                lr = requests.post(APPS_SCRIPT_EMAIL_URL, json=low_payload, timeout=20)
+                try:
+                    lr_json = lr.json()
+                except Exception:
+                    lr_json = {"raw": lr.text}
+
+                low_debug = {"status": lr.status_code, "body": lr_json}
+                if lr.status_code == 200 and isinstance(lr_json, dict) and lr_json.get("ok") is True:
+                    low_stock_sent = True
+            except Exception as e:
+                log.exception("finalize_stock(): error sending low-stock alert")
+                low_debug = {"error": str(e)}
+
+    return {
+        "order_id": order_id,
+        "status": "STOCK_UPDATED",
+        "low_stock_sent": low_stock_sent,
+        "low_debug": low_debug,
+        "updated": result.get("updated", []),
+    }
+
+# ==============================
+#  NEW ENDPOINT #2: finalize_receipt
+# ==============================
+@router.post("/finalize_receipt")
+def finalize_receipt(req: FinalizeOrderRequest):
+    if not req.customer_email or not req.customer_email.strip():
+        raise HTTPException(status_code=400, detail="customer_email is required")
+
+    order_id = f"ORD-{int(time.time())}"
+
+    email_sent = False
+    email_debug = {}
+    if EMAIL_MODE == "APPS_SCRIPT" and APPS_SCRIPT_EMAIL_URL and EMAIL_WEBHOOK_SECRET:
+        payload = {
+            "secret": EMAIL_WEBHOOK_SECRET,
+            "type": "receipt",
+            "order": {
+                "order_id": order_id,
+                "customer_email": req.customer_email,
+                "items": [{"name": it.name, "qty": it.qty} for it in req.items],
+            },
+            "owner_email": OWNER_EMAIL,
+        }
+        try:
+            er = requests.post(APPS_SCRIPT_EMAIL_URL, json=payload, timeout=20)
+            er_json = er.json() if er.headers.get("content-type","").startswith("application/json") else {"raw": er.text}
+            email_debug = {"status": er.status_code, "body": er_json}
+            if er.status_code == 200 and isinstance(er_json, dict) and er_json.get("ok") is True:
+                email_sent = True
+        except Exception as e:
+            email_debug = {"error": str(e)}
+            log.exception("finalize_receipt(): error sending receipt email")
+    else:
+        log.warning("finalize_receipt(): missing webhook config, skipping email")
+
+    cart_cleared = False
+    try:
+        clear_cart(req.session_id)
+        cart_cleared = True
+    except Exception:
+        log.exception("finalize_receipt(): failed to clear cart for session %s", req.session_id)
+
+    return {
+        "order": {"order_id": order_id, "status": "RECEIPT_SENT"},
+        "email_sent": email_sent,
+        "cart_cleared": cart_cleared,
+        "email_debug": email_debug,
     }

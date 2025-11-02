@@ -29,20 +29,26 @@ class PlaceOrderArgs(BaseModel):
 @tool("place_order", args_schema=PlaceOrderArgs)
 def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> dict:
     """
-    FINALIZE a *paid* order.
+    Send the receipt for a PAID order and clear the cart.
 
-    What this does (server side via /api/inventory/finalize):
-    - Validates stock in Sheets (case-insensitive match, so 'buttermilk' == 'Buttermilk')
-    - Decrements quantity & increments orders_count
-    - Sends receipt email to customer + copy/low-stock alert to owner
-    - Clears the user's cart for this session_id so old items won't get re-charged
+    IMPORTANT CONTRACT:
+    - Stock must already be finalized by calling `finalize_stock` exactly once for this purchase.
+    - `place_order` ONLY sends the receipt (customer + owner copy) and clears the cart.
+    - Do NOT call this until you have a valid customer_email.
 
-    The tool should be called ONLY AFTER:
-    1. stripe_checkout_status_tool confirms status == 'paid'
-    2. you asked the user for their email
-    3. you pass ONLY the items they just paid for
+    Call this ONLY AFTER:
+      1) `stripe_checkout_status_tool` returned status == 'paid'
+      2) You collected the customer's email
+      3) You pass ONLY the items they just paid for
     """
 
+    # Hard gate: do not proceed without an email
+    if not (customer_email and customer_email.strip()):
+        return {
+            "error": "missing_customer_email",
+            "message": "Customer email is required before finalizing the receipt."
+        }
+    
     payload = {
         "session_id": session_id,
         "customer_email": customer_email,
@@ -50,7 +56,7 @@ def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> 
     }
 
     # Hit the new finalize endpoint (single source of truth)
-    url = f"{BASE}/api/inventory/finalize"
+    url = f"{BASE}/api/inventory/finalize_receipt"
     try:
         r = requests.post(url, json=payload, timeout=20)
     except Exception as e:
@@ -70,15 +76,15 @@ def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> 
     if r.status_code == 200:
         # Success case
         return {
-            "order": data,
-            "status": "CONFIRMED",
-            "cart_cleared": True,
-            "email_sent": True,   # finalize endpoint is responsible for emailing
+            "status": "RECEIPT_SENT",
+            "order": data.get("order"),
+            "cart_cleared": data.get("cart_cleared", False),
+            "email_sent": data.get("email_sent", False),
         }
 
     # Failure (e.g. out-of-stock race condition)
     return {
-        "error": "finalize failed",
+        "error": "finalize_receipt_failed",
         "status_code": r.status_code,
         "response": data,
         "cart_cleared": False,

@@ -5,6 +5,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { type Message } from "@/components/ChatMessage";
 import { v4 as uuidv4 } from 'uuid';
 import PaymentPanel from "@/components/PaymentPanel/PaymentPanel";
+import { useRef } from "react"; 
+
+
 
 // Define the shape of the expected API response
 interface ApiResponse {
@@ -24,6 +27,7 @@ const Index = () => {
 
     // Generate a session ID when the component mounts
     useEffect(() => {
+        const didInit = { current: false };
         const sessionUUID = uuidv4();
         setSessionId(sessionUUID);
         console.info(`Index: New session ID generated: ${sessionUUID}`);
