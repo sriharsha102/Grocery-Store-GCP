@@ -56,13 +56,13 @@ def _read_all() -> tuple[list[str], list[list[str]]]:
     # IMPORTANT: include column E so orders_count is present
     hdr = (
         svc.values()
-        .get(spreadsheetId=sheet_id, range=f"{tab}!A1:E1")
+        .get(spreadsheetId=sheet_id, range=f"{tab}!A1:G1")
         .execute()
         .get("values", [[]])[0]
     )
     rows = (
         svc.values()
-        .get(spreadsheetId=sheet_id, range=f"{tab}!A2:E")
+        .get(spreadsheetId=sheet_id, range=f"{tab}!A2:G")
         .execute()
         .get("values", [])
     )
@@ -88,21 +88,16 @@ def _rows_as_dicts() -> List[Dict[str, Any]]:
     hdr, rows = _read_all()
     header = [h.strip().lower() for h in hdr]
     out: List[Dict[str, Any]] = []
-
-    # find column indices we care about
-    def safe_idx(col_name: str):
-        try:
-            return header.index(col_name)
-        except ValueError:
-            return None
-
-    name_idx         = safe_idx("name")
-    price_idx        = safe_idx("price")
-    qty_idx          = safe_idx("quantity")
-    date_idx         = safe_idx("date")
-    oc_idx           = safe_idx("orders_count")
-    top_selling_idx  = safe_idx("top_selling_items")
-    sale_idx         = safe_idx("sales")
+    # print(header)
+    # Find column indices by header (case-insensitive)
+    try:
+        name_idx = header.index("name")
+    except ValueError:
+        name_idx = 0
+    price_idx = header.index("price") if "price" in header else None
+    qty_idx   = header.index("quantity") if "quantity" in header else None
+    #oc_idx    = header.index("orders_count") if "orders_count" in header else None
+    top_selling_idx    = header.index("Top_Selling_Items") if "Top_Selling_Items" in header else None
 
     for r in rows:
         # pad in case row shorter than header
@@ -111,50 +106,19 @@ def _rows_as_dicts() -> List[Dict[str, Any]]:
         # start with raw mapping of EVERY column
         rec = {header[i]: r[i] for i in range(len(header))}
 
-        # normalize common/critical fields
-        # name
-        if name_idx is not None:
-            rec["name"] = str(r[name_idx]).strip()
-        else:
-            rec["name"] = str(rec.get("name", "")).strip()
-
         # price -> float
         if price_idx is not None:
-            rec["price"] = _to_float(r[price_idx])
-        else:
             rec["price"] = _to_float(rec.get("price"))
 
         # quantity -> int
         if qty_idx is not None:
-            rec["quantity"] = _to_int(r[qty_idx])
-        else:
             rec["quantity"] = _to_int(rec.get("quantity"))
 
-        # date (leave as-is string)
-        if date_idx is not None:
-            rec["date"] = str(r[date_idx]).strip()
-        # else: leave whatever was already in rec["date"] if present
+        rec["name"] = str(rec.get("name", "")).strip()
 
-        # orders_count -> int
-        if oc_idx is not None:
-            rec["orders_count"] = _to_int(r[oc_idx])
-        else:
-            rec["orders_count"] = _to_int(rec.get("orders_count"))
-
-        # top_selling_items -> normalized key "top_selling"
         if top_selling_idx is not None:
-            rec["top_selling"] = str(r[top_selling_idx]).strip()
-        else:
-            # fall back to whatever key may already exist
             rec["top_selling"] = str(rec.get("top_selling_items", "")).strip()
 
-        # sales -> normalized key "sale"
-        if sale_idx is not None:
-            rec["sale"] = str(r[sale_idx]).strip()
-        else:
-            rec["sale"] = str(rec.get("sales", "")).strip()
-
-        # finally, only include non-empty name rows
         if rec["name"]:
             out.append(rec)
 
@@ -171,13 +135,22 @@ def get_menu() -> List[Dict]:
     """
     return _rows_as_dicts()
 
-def get_top5_by_orders() -> List[Dict]:
+def get_top_selling_items() -> List[Dict]:
     """
-    Returns top 5 rows sorted by 'orders_count' (desc).
+    Returns top selling items from top_selling_items column.
     """
     items = _rows_as_dicts()
-    items.sort(key=lambda x: x.get("orders_count", 0), reverse=True)
-    return items[:5]
+    selected_cols = ["name", "price", "quantity", "top_selling_items"]
+    
+    selected_cols = [c.lower() for c in selected_cols]
+    filtered_items = [
+        {k: v for k, v in item.items() if k.lower() in selected_cols}
+        for item in items
+    ]
+    #print(filtered_items)
+    return filtered_items
+    #items.sort(key=lambda x: x.get("orders_count", 0), reverse=True)
+    #return items[:5]
 
 # integrations/google_sheets/sheets_dal.py
 

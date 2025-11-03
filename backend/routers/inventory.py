@@ -12,7 +12,7 @@ load_dotenv()
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from integrations.google_sheets.sheets_dal import (
     get_menu,
-    get_top5_by_orders,
+    get_top_selling_items,
     decrement_quantities,
 )
 # We no longer import send_receipt / send_low_stock_alert because
@@ -56,15 +56,15 @@ class FinalizeReceiptRequest(BaseModel):
     customer_email: EmailStr
 # ---------- Read-only endpoints ----------
 
-@router.get("/top5")
-def top5():
+@router.get("/top")
+def top():
     """
     Return top sellers by orders_count from the sheet.
     """
     try:
-        return {"items": get_top5_by_orders()}
+        return {"items": get_top_selling_items()}
     except Exception as e:
-        log.exception("top5 failed")
+        log.exception("top selling items failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 

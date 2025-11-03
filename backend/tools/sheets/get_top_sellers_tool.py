@@ -18,12 +18,12 @@ def _json_or_err(r):
 @tool("get_top_sellers")
 def get_top_sellers() -> dict:
     """
-    Return top 5 items by orders. Tries /api/inventory/top5 first.
-    If missing, fetches /api/inventory/menu and computes top 5 locally.
+    Return top items. Tries /api/inventory/top first.
+    If missing, fetches /api/inventory/menu and computes top locally.
     """
     attempts = {}
 
-    url_top5 = f"{BASE}/api/inventory/top5"
+    url_top5 = f"{BASE}/api/inventory/top"
     try:
         r = requests.get(url_top5, timeout=8)
         data, err = _json_or_err(r)
