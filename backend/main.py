@@ -54,7 +54,7 @@ if not OPENAI_API_KEY:
 # ──────────────────────────────────────────────────────────────────────────────
 # FastAPI app
 # ──────────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Chai Corner Backend")
+app = FastAPI(title="Bharat Bazar Backend")
 
 # CORS
 origins = [

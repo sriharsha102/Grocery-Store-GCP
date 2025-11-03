@@ -65,7 +65,7 @@ export const ChatInput = ({ onSendMessage, isLoading = false, messages }: ChatIn
                         <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                         <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                         <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
-                        <span className="text-sm">Chai Corner is thinking...</span>
+                        <span className="text-sm">Agent is thinking...</span>
                     </div>
                 )}
             </form>

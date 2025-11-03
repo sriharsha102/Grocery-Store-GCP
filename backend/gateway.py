@@ -17,7 +17,7 @@ if os.path.isdir(STATIC_DIR):
 
 # @root.get("/")
 # async def root_health():
-#     return {"status": "ok", "service": "Chai Corner backend running"}
+#     return {"status": "ok", "service": "Bharat Bazar backend running"}
     
 @root.get("/{_path:path}")
 def spa(_path: str):
