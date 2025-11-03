@@ -92,7 +92,7 @@ const Index = () => {
         const timer = setTimeout(() => {
             const inititalMessage: Message = {
                 id: Date.now().toString(),
-                text: "Welcome to Bharat Bazar! How can I help you today? You can ask me about our products, add items to your cart, and proceed to checkout when you're ready.",
+                text: "Welcome to Bharat Bazar! 🛍️ - I'm your smart shopping assistant.\nYou can ask me about our top-selling items, browse our full menu, add things to your cart 🛒, and check out whenever you’re ready!",
                 sender: 'assistant',
                 timestamp: new Date()
             };

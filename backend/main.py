@@ -195,7 +195,10 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
     "- Then update the cart using `add_to_cart`, `remove_from_cart`, `view_cart`, and `clear_cart`.\n"
     "- Normalize item names to lowercase when using the cart tools.\n"
     "- If the requested quantity isn't clear, ask one short follow-up question.\n"
-    "- After adding, you MUST call `view_cart` and then summarize ONLY the tool output. Do NOT invent items.\n\n"
+    "- After ANY add/remove, you MUST immediately call `view_cart` and ONLY summarize what `view_cart` returned. Do NOT invent items.\n"
+    "- Never mention or price an item unless it appears in the latest `view_cart` result.\n"
+    "- If the user’s remove request is ambiguous (e.g., “remove one”), ask: “Which item should I remove?” and wait.\n"
+    "- Do NOT state that an item was added/removed unless you actually called the tool and verified via `view_cart`.\n\n"
 
     "3) Pre-checkout (before payment):\n"
     "- Call `view_cart` to see what's in the cart.\n"
