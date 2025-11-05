@@ -173,7 +173,7 @@ const Index = () => {
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-gradient-to-br from-primary to-orange-500 rounded-full flex items-center justify-center">
-                            <span className="text-sm">🫖</span>
+                            <span className="text-sm">🛍️</span>
                         </div>
                         <div>
                             <h1 className="font-semibold text-foreground">Bharat Bazar</h1>
