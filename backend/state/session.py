@@ -1,6 +1,6 @@
 from typing import Dict
 from fastapi import WebSocket
-from state.chat_state import ChatState
+from backend.state.chat_state import ChatState
 
 session_state: Dict[str, ChatState] = {} # [session_id, ChatState]
 

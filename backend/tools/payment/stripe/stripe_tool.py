@@ -2,7 +2,7 @@ import os
 import stripe
 from langchain_core.tools import tool
 from pydantic import BaseModel
-from state.session import get_stripe_order_id
+from backend.state.session import get_stripe_order_id
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 

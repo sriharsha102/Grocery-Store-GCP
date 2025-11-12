@@ -1,15 +1,13 @@
-# backend/gateway.py
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 
-import main as main_module
-import token_service as token_module
+from backend import main as main_module
+
 
 root = FastAPI(title="Unified App")
 root.mount("/api",   main_module.app)
-root.mount("/token", token_module.app)
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(STATIC_DIR):

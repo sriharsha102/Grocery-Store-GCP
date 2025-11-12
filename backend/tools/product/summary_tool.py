@@ -1,7 +1,7 @@
 # tools/product/summary_tool.py
 from langchain_core.tools import tool
 import re
-from tools.product.products_tool import fetch_menu  # <-- import the helper, NOT the tool
+from backend.tools.product.products_tool import fetch_menu  # <-- import the helper, NOT the tool
 
 def _menu_dict() -> dict[str, float]:
     data = fetch_menu()

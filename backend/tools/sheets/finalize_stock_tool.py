@@ -4,7 +4,8 @@ from langchain_core.tools import tool
 import requests
 import os, requests
 
-BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")
+#BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")
+BASE = "http://localhost:8080"
 
 class OrderItem(BaseModel):
     name: str = Field(..., description="Product name")

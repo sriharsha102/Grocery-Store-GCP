@@ -6,7 +6,7 @@ from typing import List
 from pydantic.v1 import BaseModel, Field, EmailStr
 from langchain.tools import tool
 
-BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")
+BASE = "http://localhost:8080"
 
 class LineItem(BaseModel):
     name: str = Field(..., description="Exact product name")

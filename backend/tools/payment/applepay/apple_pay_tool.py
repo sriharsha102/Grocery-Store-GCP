@@ -1,19 +1,5 @@
 import requests
-from token_service import get_token_for_provider, refresh_token_for_provider
 
-def _request_with_auto_refresh(method, url, headers=None, **kwargs):
-    provider = "applepay"
-    hdrs = dict(headers or {})
-    tok = get_token_for_provider(provider)
-    if tok and isinstance(tok, dict) and tok.get("access_token"):
-        hdrs.setdefault("Authorization", f"Bearer {tok['access_token']}")
-    resp = requests.request(method.upper(), url, headers=hdrs, **kwargs)
-    if getattr(resp, "status_code", None) in (401, 403):
-        new_tok = refresh_token_for_provider(provider)
-        if new_tok and new_tok.get("access_token"):
-            hdrs["Authorization"] = f"Bearer {new_tok['access_token']}"
-        resp = requests.request(method.upper(), url, headers=hdrs, **kwargs)
-    return resp
 
 import os
 from langchain_core.tools import tool

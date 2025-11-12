@@ -27,23 +27,13 @@ pip install -r requirements.txt
 in both frontend and backend directories
 ---
 
-## 3. QuickBooks Token Smoke Test - optional
-
-This step is meant as a sanity check to see if your QuickBooks token refresh flow is actually working before you run the full chatbot.
-
-```bash
-python qb_refresh_smoketest.py
-```
-
----
-
-## 4. Execute the following in new powershell
+## 3. Execute the following in new powershell
 
 ```bash
 npm install
 npm run build
 ```
-## 5. To copy frontend/dist to backend/static run the following commands:
+## 4. To copy frontend/dist to backend/static run the following commands:
 ```bash
 //remove backend/static folder if it exists and recreate it with contents from frontend/dist
            rm -rf backend/static
@@ -53,7 +43,7 @@ npm run build
 #Remove-Item "backend\static" -Recurse -Force -toRemove the folder
 ```
 
-## 6. Start the Application
+## 5. Start the Application
 
 Make sure you have .env files in both frontend folder and backend folder. 
 Run the following command in backend directory

@@ -4,13 +4,12 @@ import sys
 from typing import List, Dict, Any
 from langchain_core.tools import tool
 from langchain_core.pydantic_v1 import BaseModel, Field
-from state.session import get_websocket, set_stripe_order_id, set_paypal_order_id
+from backend.state.session import get_websocket, set_stripe_order_id, set_paypal_order_id
 
 import stripe
-import paypalrestsdk
 
 # NEW: instead of HTTP requests.get(...), we import the sheet DAL directly
-from integrations.google_sheets.sheets_dal import get_menu
+from backend.integrations.google_sheets.sheets_dal import get_menu
 
 log = logging.getLogger(__name__)
 logging.basicConfig(
@@ -20,16 +19,6 @@ logging.basicConfig(
 )
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-
-try:
-    paypalrestsdk.configure({
-        "mode": os.getenv("PAYPAL_MODE", "sandbox"),
-        "client_id": os.getenv("PAYPAL_CLIENT_ID"),
-        "client_secret": os.getenv("PAYPAL_CLIENT_SECRET"),
-    })
-    print("PayPal SDK configured successfully.")
-except Exception as e:
-    print(f"Error configuring PayPal SDK: {e}")
 
 
 class CartItem(BaseModel):
