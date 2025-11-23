@@ -176,7 +176,7 @@ const Index = () => {
                             <span className="text-sm">🛍️</span>
                         </div>
                         <div>
-                            <h1 className="font-semibold text-foreground">Bharat Bazar</h1>
+                            <h1 className="font-semibold text-[hsl(var(--header-text))]">Bharat Bazar</h1>
                             <p className="text-xs text-muted-foreground">AI E-commerce Assistant</p>
                         </div>
                     </div>

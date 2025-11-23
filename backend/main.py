@@ -17,8 +17,6 @@ from langchain.memory import ConversationBufferMemory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from backend.routers.inventory import router as inventory_router
 
-from backend.routers.applepay import router as applepay_router
-
 # Tools & SDKs
 from backend.state.session import set_websocket
 from backend.tools.tool_config import get_all_tools
@@ -53,13 +51,10 @@ if not OPENAI_API_KEY:
 app = FastAPI(title="Bharat Bazar Backend")
 
 # CORS
-origins = [
-    "http://10.0.0.80:8080",
-    "http://localhost:8080",
-    "http://localhost:5173",
-    "http://127.0.0.1:8080",
-    "http://10.0.0.106:8080",
-]
+origins_raw = os.getenv("CORS_ORIGINS", "")
+
+origins = [o.strip() for o in origins_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -256,4 +251,3 @@ async def chat_endpoint(request: ChatRequest):
 # Routers
 # ──────────────────────────────────────────────────────────────────────────────
 app.include_router(inventory_router)
-app.include_router(applepay_router)

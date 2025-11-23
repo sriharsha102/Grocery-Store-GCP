@@ -4,7 +4,7 @@ import sys
 from typing import List, Dict, Any
 from langchain_core.tools import tool
 from langchain_core.pydantic_v1 import BaseModel, Field
-from backend.state.session import get_websocket, set_stripe_order_id, set_paypal_order_id
+from backend.state.session import get_websocket, set_stripe_order_id
 
 import stripe
 
@@ -176,7 +176,6 @@ async def trigger_payment(cart_items: List[CartItem], session_id: str):
         }
 
     log.info("Stripe Checkout Session created: %s", checkout_session.id)
-    print(f"\n💳 Apple Pay Link Generated: {checkout_session.url}\n")
 
     # save checkout_session.id for stripe_checkout_status_tool later
     set_stripe_order_id(session_id, checkout_session.id)

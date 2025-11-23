@@ -8,7 +8,6 @@ from backend.tools.cart.cart_tool import cart_tools
 from backend.tools.product.products_tool import products_tool
 from backend.tools.product.summary_tool import generate_summary
 
-from backend.tools.payment.applepay.apple_pay_tool import apple_pay_tools
 from backend.tools.payment.trigger_payment import trigger_payment_tool
 from backend.tools.payment.stripe.stripe_tool import stripe_checkout_status_tool
 
@@ -29,8 +28,6 @@ def get_all_tools() -> list[Tool]:
             finalize_stock,
             place_order       # ← NEW (decrement Sheet + send emails)
         ]
-        # + apple_pay_tools
-        # + get_paypal_tools()
     )
     logger.info(f"Successfully loaded {len(tools)} tools for the agent.")
     return tools

@@ -2,7 +2,7 @@
 import os, requests
 from langchain.tools import tool
 
-BASE = "http://localhost:8080"
+BASE = os.getenv("API_BASE","http://localhost:8080")
 
 def _json_or_err(r):
     ct = r.headers.get("content-type", "")

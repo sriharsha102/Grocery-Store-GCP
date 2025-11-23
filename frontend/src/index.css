@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,119 +9,131 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Chat UI Design System - Chai Corner Theme */
-    --background: 30 8% 98%;
-    --foreground: 25 25% 15%;
+    /* === Bharath Bazar Theme === */
 
-    --card: 0 0% 100%;
-    --card-foreground: 25 25% 15%;
+    /* Main surface + text */
+    --background: 178.2 47.8% 13.5%;          /* #123332 - dark green */
+    --foreground: 23.3 60% 94.1%;             /* #F9EEE7 - light cream */
+    --header-text: 24.9 100% 87.3%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 25 25% 15%;
+    --card: 178.4 38.9% 18.6%;                /* #1D4241 - slightly lighter dark green */
+    --card-foreground: 23.3 60% 94.1%;        /* cream */
 
-    /* Warm chai-inspired primary colors */
-    --primary: 25 75% 55%;
-    --primary-foreground: 0 0% 100%;
+    --popover: 178.4 38.9% 18.6%;
+    --popover-foreground: 23.3 60% 94.1%;
 
-    --secondary: 30 15% 92%;
-    --secondary-foreground: 25 25% 15%;
+    /* Buttons (Send, primary actions) – dark peach */
+    --primary: 14.3 77.3% 72.4%;              /* #EF9C82 - dark peach */
+    --primary-foreground: 178.2 47.8% 13.5%;  /* dark green text/icon on peach */
 
-    --muted: 30 10% 94%;
-    --muted-foreground: 25 15% 45%;
+    /* Secondary / subtle surfaces */
+    --secondary: 24.9 100% 87.3%;             /* #FFD9BE - peach */
+    --secondary-foreground: 178.2 47.8% 13.5%;
 
-    --accent: 35 25% 88%;
-    --accent-foreground: 25 25% 15%;
+    --muted: 23.3 60% 94.1%;                  /* #F9EEE7 - light peach/cream */
+    --muted-foreground: 178.2 20% 35%;        /* desaturated green for muted text */
+
+    --accent: 24.9 100% 87.3%;                /* peach accents */
+    --accent-foreground: 178.2 47.8% 13.5%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 30 15% 88%;
-    --input: 30 15% 95%;
-    --ring: 25 75% 55%;
+    /* Borders / inputs / focus ring */
+    --border: 178.4 24% 30%;                  /* teal-ish border */
+    --input: 178.4 38.9% 18.6%;
+    --ring: 14.3 77.3% 72.4%;                 /* use primary as focus ring */
 
     /* Chat-specific colors */
-    --chat-background: 30 8% 96%;
-    --user-message: 210 100% 56%;
-    --user-message-foreground: 0 0% 100%;
-    --assistant-message: 0 0% 100%;
-    --assistant-message-foreground: 25 25% 15%;
-    --message-border: 30 15% 88%;
+    --chat-background: 178.4 38.9% 18.6%;     /* dark green panel behind messages */
 
-    /* Gradients */
-    --gradient-warm: linear-gradient(135deg, hsl(25 75% 55%), hsl(35 65% 50%));
-    --gradient-subtle: linear-gradient(180deg, hsl(30 8% 98%), hsl(30 8% 96%));
+    /* Both agent & user messages: light green bubbles */
+    --user-message: 14.3 77.3% 72.4%;         /* custom light green bubble */
+    --user-message-foreground: 178.2 47.8% 13.5%; /*cream text */
+
+    --assistant-message:178.4 38.9% 40%;  /*178.4 38.9% 32%;     / slightly darker light green */
+    --assistant-message-foreground: 24.9 100% 87.3%; /*23.3 60% 94.1%;/ cream text *//*24.9 100% 87.3%;  peach text */
+
+    --message-border: 178.4 30% 26%;          /* subtle border for bubbles */
+
+    /* Gradients using your palette */
+    --gradient-warm: linear-gradient(
+      135deg,
+      hsl(14.3 77.3% 72.4%),                   /* dark peach */
+      hsl(24.9 100% 87.3%)                     /* peach */
+    );
+
+    --gradient-subtle: linear-gradient(
+      180deg,
+      hsl(178.2 47.8% 13.5%),
+      hsl(178.4 38.9% 18.6%)
+    );
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar (if used) */
+    --sidebar-background: 178.2 47.8% 13.5%;
+    --sidebar-foreground: 23.3 60% 94.1%;
+    --sidebar-primary: 14.3 77.3% 72.4%;
+    --sidebar-primary-foreground: 178.2 47.8% 13.5%;
+    --sidebar-accent: 178.4 38.9% 18.6%;
+    --sidebar-accent-foreground: 23.3 60% 94.1%;
+    --sidebar-border: 178.4 30% 26%;
+    --sidebar-ring: 14.3 77.3% 72.4%;
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+  /* Dark mode – keep same brand look (slightly darker bg if you want later) */
+.dark {
+  /* === Bharath Bazar Theme (Same as Light Mode) === */
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+  /* Main surface + text */
+  --background: 178.2 47.8% 13.5%;          /* #123332 - dark green */
+  --foreground: 23.3 60% 94.1%;             /* #F9EEE7 - cream */
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+  --card: 178.4 38.9% 18.6%;                /* #1D4241 */
+  --card-foreground: 23.3 60% 94.1%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+  --popover: 178.4 38.9% 18.6%;
+  --popover-foreground: 23.3 60% 94.1%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+  /* Buttons */
+  --primary: 14.3 77.3% 72.4%;              /* #EF9C82 - peach */
+  --primary-foreground: 178.2 47.8% 13.5%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+  --secondary: 24.9 100% 87.3%;             /* #FFD9BE */
+  --secondary-foreground: 178.2 47.8% 13.5%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+  --muted: 23.3 60% 94.1%;                  /* cream */
+  --muted-foreground: 178.2 20% 35%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+  --accent: 24.9 100% 87.3%;                /* peach */
+  --accent-foreground: 178.2 47.8% 13.5%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 100%;
 
-    /* Chat-specific colors for dark mode */
-    --chat-background: 222.2 84% 4.9%;
-    --user-message: 210 100% 56%;
-    --user-message-foreground: 0 0% 100%;
-    --assistant-message: 217.2 32.6% 17.5%;
-    --assistant-message-foreground: 210 40% 98%;
-    --message-border: 217.2 32.6% 17.5%;
+  /* Borders / inputs / ring */
+  --border: 178.4 24% 30%;
+  --input: 178.4 38.9% 18.6%;
+  --ring: 14.3 77.3% 72.4%;
 
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
+  /* Chat bubbles */
+  --chat-background: 178.4 38.9% 18.6%;
+
+  --user-message: 14.3 77.3% 72.4%;         /* peach user bubble */
+  --user-message-foreground: 178.2 47.8% 13.5%; /* dark green text */
+
+  --assistant-message: 178.4 38.9% 40%;     /* green assistant bubble */
+  --assistant-message-foreground: 24.9 100% 87.3%; /* peach text */
+
+  --message-border: 178.4 30% 26%;
+}
 }
 
 @layer base {
   * {
     @apply border-border;
-  }
+  }   
 
   body {
     @apply bg-background text-foreground;

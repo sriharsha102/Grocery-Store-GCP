@@ -1,8 +1,11 @@
 # backend/integrations/google_sheets/sheets_dal.py
 import os
+import logging
 from typing import List, Dict, Tuple, Any
 from .sheets_client import get_sheets
 
+
+log = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Internal helpers
@@ -10,7 +13,7 @@ from .sheets_client import get_sheets
 
 def _sheet_id() -> str:
     sid = os.getenv("GOOGLE_SHEET_ID")
-    print("DEBUG GOOGLE_SHEET_ID =", sid)   # temporary
+    log.info("DEBUG GOOGLE_SHEET_ID =", sid)   # temporary
     if not sid:
         raise RuntimeError("GOOGLE_SHEET_ID is not set. Add it to backend/.env.")
     return sid
@@ -88,7 +91,6 @@ def _rows_as_dicts() -> List[Dict[str, Any]]:
     hdr, rows = _read_all()
     header = [h.strip().lower() for h in hdr]
     out: List[Dict[str, Any]] = []
-    # print(header)
     # Find column indices by header (case-insensitive)
     try:
         name_idx = header.index("name")
@@ -147,7 +149,6 @@ def get_top_selling_items() -> List[Dict]:
         {k: v for k, v in item.items() if k.lower() in selected_cols}
         for item in items
     ]
-    #print(filtered_items)
     return filtered_items
     #items.sort(key=lambda x: x.get("orders_count", 0), reverse=True)
     #return items[:5]

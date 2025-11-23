@@ -1,10 +1,12 @@
 import { cn } from "@/lib/utils";
 import React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export interface Message {
     id: string;
     text: string;
-    sender: 'user' | 'assistant';
+    sender: "user" | "assistant";
     timestamp: Date;
 }
 
@@ -13,35 +15,52 @@ interface ChatMessageProps {
 }
 
 export const ChatMessage = ({ message }: ChatMessageProps) => {
-    const isUser = message.sender === 'user';
+    const isUser = message.sender === "user";
 
-    
-    // This function will parse the message and render a button if the link pattern is found
+    // Markdown renderer (fixed — DOES NOT override <p>)
+    const MarkdownText = ({ text }: { text: string }) => (
+        <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+                strong: ({ children }) => (
+                    <strong className="font-semibold">{children}</strong>
+                ),
+                em: ({ children }) => (
+                    <em className="italic">{children}</em>
+                ),
+                li: ({ children }) => (
+                    <li className="ml-4 list-disc">{children}</li>
+                ),
+                code: ({ children }) => (
+                    <code className="bg-black/20 px-1 py-0.5 rounded text-sm">
+                        {children}
+                    </code>
+                ),
+            }}
+        >
+            {text}
+        </ReactMarkdown>
+    );
+
+    // Button extraction + markdown logic
     const renderMessageContent = () => {
-        // Regular expression to find the specific pattern: 📄 [Button Text](URL)
-        // const linkRegex = /📄\[([^\]]+)\]\(([^)]+)\)/;
-        const linkRegex = /(?:📄\s*)?\[(.*?)\]\((.*?)\)\.?/;
+        const linkRegex = /(?:📄\s*)?\[(.?)\]\((.?)\)\.?/;
         const match = message.text.match(linkRegex);
 
-        // If no link pattern is found, just return the plain text
         if (!match) {
-            return <>{message.text}</>;
+            return <MarkdownText text={message.text} />;
         }
 
-        // If a match is found, extract the parts
         const [fullMatch, buttonText, url] = match;
-
-        // Split the message text by the full matched link string to get the text before and after
         const parts = message.text.split(fullMatch);
         const textBefore = parts[0];
         const textAfter = parts[1];
 
         return (
             <>
-                {/* Render the text before the button */}
-                {textBefore}
+                {textBefore && <MarkdownText text={textBefore} />}
 
-                {/* Render the link as a styled button */}
+                {/* Button */}
                 <a
                     href={url}
                     target="_blank"
@@ -53,39 +72,49 @@ export const ChatMessage = ({ message }: ChatMessageProps) => {
                             : "bg-blue-700 hover:bg-blue-800 text-white focus:ring-blue-500"
                     )}
                 >
-                    {/* You could add a download icon here as well */}
                     {buttonText}
                 </a>
 
-                {/* Render the text after the button */}
-                {textAfter}
+                {textAfter && <MarkdownText text={textAfter} />}
             </>
         );
     };
 
     return (
-        <div className={cn(
-            "flex w-full mb-4 animate-in fade-in slide-in-from-bottom-2 duration-300",
-            isUser ? "justify-end" : "justify-start"
-        )}>
-            <div className={cn(
-                "max-w-[70%] rounded-2xl px-4 py-3 shadow-sm border transition-all duration-200 hover:shadow-md",
-                isUser
-                    ? "bg-user-message text-user-message-foreground rounded-tr-sm bg-blue-800 font-medium text-right"
-                    : "bg-assistant-message text-assistant-message-foreground border-message-border rounded-tl-sm font-medium text-left"
-            )}>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+        <div
+            className={cn(
+                "flex w-full mb-4 animate-in fade-in slide-in-from-bottom-2 duration-300",
+                isUser ? "justify-end" : "justify-start"
+            )}
+        >
+            <div
+                className={cn(
+                    "max-w-[70%] rounded-2xl px-4 py-3 shadow-sm border transition-all duration-200 hover:shadow-md",
+                    isUser
+                        ? "bg-user-message text-user-message-foreground rounded-tr-sm font-medium text-right"
+                        : "bg-assistant-message text-assistant-message-foreground border-message-border rounded-tl-sm font-medium text-left"
+                )}
+            >
+                {/* MESSAGE CONTENT */}
+                <div className="text-sm leading-relaxed break-words">
                     {renderMessageContent()}
-                </p>
-                <span className={cn(
-                    "text-xs mt-2 block opacity-70",
-                    isUser ? "text-user-message-foreground text-left" : "text-muted-foreground text-right"
-                )}>
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+
+                {/* TIMESTAMP */}
+                <span
+                    className={cn(
+                        "text-xs mt-2 block opacity-70",
+                        isUser
+                            ? "text-user-message-foreground text-left"
+                            : "text-muted-foreground text-right"
+                    )}
+                >
+                    {message.timestamp.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    })}
                 </span>
             </div>
         </div>
     );
 };
-
-export default ChatMessage;
