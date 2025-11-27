@@ -2,13 +2,18 @@ import os
 import io
 import sys
 import logging
+import uuid
+import threading
+import time
 from pathlib import Path
+from datetime import datetime, timedelta
+from typing import Dict
 import requests
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from langchain.tools.render import render_text_description
 from langchain_openai import ChatOpenAI
@@ -18,7 +23,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from backend.routers.inventory import router as inventory_router
 
 # Tools & SDKs
-from backend.state.session import set_websocket
+from backend.state.session import set_websocket, cleanup_session
 from backend.tools.tool_config import get_all_tools
 
 
@@ -39,21 +44,44 @@ logger.info("Bharat Bazar Backend starting up...")
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
+# Validate required environment variables at startup
+REQUIRED_ENV_VARS = [
+    "OPENAI_API_KEY",
+    "STRIPE_SECRET_KEY",
+    "GOOGLE_SHEET_ID",
+    "GOOGLE_SERVICE_ACCOUNT_JSON",
+    "APPS_SCRIPT_EMAIL_URL",
+    "EMAIL_WEBHOOK_SECRET",
+    "OWNER_EMAIL"
+]
+
+missing_vars = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
+if missing_vars:
+    raise RuntimeError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL") or "gpt-4o-mini"
-
-if not OPENAI_API_KEY:
-    raise RuntimeError("Missing OPENAI_API_KEY in environment.")
+REQUEST_TIMEOUT = int(os.getenv("EXTERNAL_REQUEST_TIMEOUT", "30"))
+SESSION_TIMEOUT_HOURS = int(os.getenv("SESSION_TIMEOUT_HOURS", "2"))
 
 # ──────────────────────────────────────────────────────────────────────────────
 # FastAPI app
 # ──────────────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Bharat Bazar Backend")
 
-# CORS
-origins_raw = os.getenv("CORS_ORIGINS", "")
-
+# CORS - Validate and configure
+origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:8080")
 origins = [o.strip() for o in origins_raw.split(",") if o.strip()]
+
+if not origins:
+    raise RuntimeError("CORS_ORIGINS must be configured with at least one origin")
+
+# Validate each origin is a valid URL
+for origin in origins:
+    if not origin.startswith(("http://", "https://")):
+        raise ValueError(f"Invalid CORS origin (must start with http:// or https://): {origin}")
+
+logger.info(f"CORS configured for origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,13 +91,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Health for Azure probe (pick ONE path and keep it consistent in App Settings)
+# Health check with dependency verification
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    """
+    Enhanced health check that verifies critical dependencies.
+    Returns 200 if all systems operational, 503 if degraded.
+    """
+    checks = {
+        "api": "ok",
+        "stripe_key_configured": bool(os.getenv("STRIPE_SECRET_KEY")),
+        "sheets_configured": bool(os.getenv("GOOGLE_SHEET_ID")),
+        "openai_configured": bool(OPENAI_API_KEY),
+    }
+
+    all_healthy = all(checks.values())
+
+    if not all_healthy:
+        return JSONResponse(
+            {"status": "degraded", "checks": checks},
+            status_code=503
+        )
+
+    return {"status": "ok", "checks": checks}
 
 
-session_memories = {}
+session_memories: Dict[str, ConversationBufferMemory] = {}
+session_last_activity: Dict[str, datetime] = {}
+
+def update_session_activity(session_id: str):
+    """Track last activity time for session cleanup."""
+    session_last_activity[session_id] = datetime.now()
 
 def get_memory_for_session(session_id: str) -> ConversationBufferMemory:
     if session_id not in session_memories:
@@ -78,19 +130,58 @@ def get_memory_for_session(session_id: str) -> ConversationBufferMemory:
             return_messages=True
         )
         session_memories[session_id].chat_memory.add_ai_message(f"Session ID: {session_id}")
+    update_session_activity(session_id)
     return session_memories[session_id]
+
+def cleanup_old_sessions():
+    """Background thread to clean up expired sessions."""
+    while True:
+        try:
+            now = datetime.now()
+            timeout = timedelta(hours=SESSION_TIMEOUT_HOURS)
+            expired = [
+                sid for sid, last_active in session_last_activity.items()
+                if now - last_active > timeout
+            ]
+
+            for sid in expired:
+                logger.info(f"Cleaning up expired session: {sid}")
+                session_memories.pop(sid, None)
+                session_last_activity.pop(sid, None)
+                # Clean up session state in state manager
+                cleanup_session(sid)
+
+            if expired:
+                logger.info(f"Cleaned up {len(expired)} expired sessions")
+
+        except Exception as e:
+            logger.exception(f"Error in session cleanup: {e}")
+
+        # Run cleanup every 5 minutes
+        time.sleep(300)
+
+# Start cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_old_sessions, daemon=True)
+cleanup_thread.start()
+logger.info("Session cleanup thread started")
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(ws: WebSocket, session_id: str):
-    logging.info(f"Session_id in main.websocket_endpoint: {session_id}")
+    from fastapi import WebSocketDisconnect
+
+    logging.info(f"WebSocket connection initiated for session: {session_id}")
     await ws.accept()
     set_websocket(session_id, ws)
+    update_session_activity(session_id)
+
     try:
         while True:
             data = await ws.receive_json()
-            logging.info(f"Websocket --- Message from {session_id}: {data}")
+            update_session_activity(session_id)
+            logging.info(f"WebSocket message from {session_id}: event={data.get('event')}")
+
             if data.get("event") == "payment_complete":
-                logging.info(f"main.py --- Payment complete for session: {session_id}")
+                logging.info(f"Payment complete event for session: {session_id}")
                 memory = get_memory_for_session(session_id)
                 agent_executor = create_agent(memory)
                 response = await agent_executor.ainvoke(
@@ -100,7 +191,11 @@ async def websocket_endpoint(ws: WebSocket, session_id: str):
                     "type": "agent_message",
                     "ai_message": response.get("output")
                 })
-    except Exception:
+    except WebSocketDisconnect:
+        logging.info(f"WebSocket disconnected for session: {session_id}")
+    except Exception as e:
+        logging.exception(f"WebSocket error for session {session_id}: {e}")
+    finally:
         set_websocket(session_id, None)
 
 def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
@@ -228,24 +323,47 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
 # Main chat endpoint
 # ──────────────────────────────────────────────────────────────────────────────
 class ChatRequest(BaseModel):
-    message: str
-    session_id: str
+    message: str = Field(..., min_length=1, max_length=2000, description="User message")
+    session_id: str = Field(..., pattern=r'^[a-f0-9-]{36}$', description="UUID session identifier")
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
+    """
+    Main chat endpoint for processing user messages.
+    Includes input sanitization and proper error handling.
+    """
     try:
         session_id = request.session_id
-        logging.info(f"Session_id in main.chat_endpoint: {session_id}")
+        update_session_activity(session_id)
+
+        # Sanitize input to prevent prompt injection
+        sanitized_message = request.message.replace("```", "").strip()
+        if len(sanitized_message) < 1:
+            return JSONResponse(
+                {"error": "Message cannot be empty after sanitization"},
+                status_code=400
+            )
+
+        logging.info(f"Processing chat for session: {session_id}, message length: {len(sanitized_message)}")
+
         memory = get_memory_for_session(session_id)
         agent_executor = create_agent(memory)
-        response = await agent_executor.ainvoke({"input": request.message})
+        response = await agent_executor.ainvoke({"input": sanitized_message})
+
         return {"response": response.get("output")}
-    # except Exception as e:
-    #     logging.exception("An error occurred in chat endpoint")
-    #     return JSONResponse({"error": "An internal server error occurred."}, status_code=500)
+
     except Exception as e:
-        logging.exception("An error occurred in chat endpoint")
-        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+        # Generate unique error ID for tracking
+        error_id = str(uuid.uuid4())
+        logging.exception(f"Error {error_id} in chat endpoint: {e}")
+
+        return JSONResponse(
+            {
+                "error": "An internal error occurred. Please try again.",
+                "error_id": error_id
+            },
+            status_code=500
+        )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Routers

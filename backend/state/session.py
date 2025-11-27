@@ -1,6 +1,9 @@
 from typing import Dict
 from fastapi import WebSocket
 from backend.state.chat_state import ChatState
+import logging
+
+logger = logging.getLogger(__name__)
 
 session_state: Dict[str, ChatState] = {} # [session_id, ChatState]
 
@@ -13,6 +16,19 @@ def get_state(session_id: str) -> ChatState:
 
 def save_state(session_id:str, state: ChatState) -> None:
     session_state[session_id] = state
+
+def cleanup_session(session_id: str) -> None:
+    """Clean up all session data for a given session ID."""
+    if session_id in session_state:
+        session_state.pop(session_id, None)
+        logger.debug(f"Cleaned up session state for: {session_id}")
+
+    # Also clean up cart data
+    try:
+        from backend.tools.cart.cart_tool import cleanup_cart_for_session
+        cleanup_cart_for_session(session_id)
+    except Exception as e:
+        logger.warning(f"Error cleaning up cart for session {session_id}: {e}")
     
 
 ### Customer ###

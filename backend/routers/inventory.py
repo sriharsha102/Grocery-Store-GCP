@@ -30,6 +30,14 @@ OWNER_EMAIL = os.getenv("OWNER_EMAIL", "")  # e.g. developers@lightningminds.com
 EMAIL_MODE = os.getenv("EMAIL_MODE", "APPS_SCRIPT").upper()
 APPS_SCRIPT_EMAIL_URL = os.getenv("APPS_SCRIPT_EMAIL_URL", "")
 EMAIL_WEBHOOK_SECRET = os.getenv("EMAIL_WEBHOOK_SECRET", "")
+REQUEST_TIMEOUT = int(os.getenv("EXTERNAL_REQUEST_TIMEOUT", "30"))
+
+# Validate critical configuration at module load
+if EMAIL_MODE == "APPS_SCRIPT":
+    if not APPS_SCRIPT_EMAIL_URL:
+        log.warning("EMAIL_MODE is APPS_SCRIPT but APPS_SCRIPT_EMAIL_URL not configured")
+    if not EMAIL_WEBHOOK_SECRET:
+        log.warning("EMAIL_MODE is APPS_SCRIPT but EMAIL_WEBHOOK_SECRET not configured - webhooks will fail")
 
 
 # ---------- Pydantic models ----------
@@ -175,15 +183,20 @@ def finalize_stock(req: FinalizeStockRequest):
                 "items": [{"name": u["name"], "new_qty": u["new_qty"]} for u in low_items],
             }
             try:
-                lr = requests.post(APPS_SCRIPT_EMAIL_URL, json=low_payload, timeout=20)
+                lr = requests.post(APPS_SCRIPT_EMAIL_URL, json=low_payload, timeout=REQUEST_TIMEOUT)
+                # Safe JSON parsing
                 try:
                     lr_json = lr.json()
-                except Exception:
-                    lr_json = {"raw": lr.text}
+                except (ValueError, requests.exceptions.JSONDecodeError) as json_err:
+                    log.warning(f"Failed to parse JSON response: {json_err}")
+                    lr_json = {"raw": lr.text, "parse_error": True}
 
                 low_debug = {"status": lr.status_code, "body": lr_json}
                 if lr.status_code == 200 and isinstance(lr_json, dict) and lr_json.get("ok") is True:
                     low_stock_sent = True
+            except requests.exceptions.Timeout:
+                log.error(f"Timeout sending low-stock alert after {REQUEST_TIMEOUT}s")
+                low_debug = {"error": "Request timeout"}
             except Exception as e:
                 log.exception("finalize_stock(): error sending low-stock alert")
                 low_debug = {"error": str(e)}
@@ -220,11 +233,20 @@ def finalize_receipt(req: FinalizeOrderRequest):
             "owner_email": OWNER_EMAIL,
         }
         try:
-            er = requests.post(APPS_SCRIPT_EMAIL_URL, json=payload, timeout=20)
-            er_json = er.json() if er.headers.get("content-type","").startswith("application/json") else {"raw": er.text}
+            er = requests.post(APPS_SCRIPT_EMAIL_URL, json=payload, timeout=REQUEST_TIMEOUT)
+            # Safe JSON parsing
+            try:
+                er_json = er.json()
+            except (ValueError, requests.exceptions.JSONDecodeError) as json_err:
+                log.warning(f"Failed to parse JSON response: {json_err}")
+                er_json = {"raw": er.text, "parse_error": True}
+
             email_debug = {"status": er.status_code, "body": er_json}
             if er.status_code == 200 and isinstance(er_json, dict) and er_json.get("ok") is True:
                 email_sent = True
+        except requests.exceptions.Timeout:
+            log.error(f"Timeout sending receipt email after {REQUEST_TIMEOUT}s")
+            email_debug = {"error": "Request timeout"}
         except Exception as e:
             email_debug = {"error": str(e)}
             log.exception("finalize_receipt(): error sending receipt email")

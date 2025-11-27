@@ -19,8 +19,23 @@ if os.path.isdir(STATIC_DIR):
     
 @root.get("/{_path:path}")
 def spa(_path: str):
+    """
+    Serve SPA for non-API routes.
+    Security: Don't serve index.html for failed API routes.
+    """
+    # Don't serve SPA for API routes that 404
+    if _path.startswith("api/"):
+        raise HTTPException(
+            status_code=404,
+            detail="API endpoint not found"
+        )
+
     index_html = os.path.join(STATIC_DIR, "index.html")
     if os.path.isfile(index_html):
         return FileResponse(index_html)
+
     # UI not built yet
-    raise HTTPException(status_code=503, detail="Frontend not built. Run `npm run build` and copy to backend/static.")
+    raise HTTPException(
+        status_code=503,
+        detail="Frontend not built. Run `npm run build` and copy to backend/static."
+    )

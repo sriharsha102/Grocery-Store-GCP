@@ -1,20 +1,28 @@
 from collections import defaultdict
 from langchain_core.tools import tool
 import logging
+from typing import Dict
 
 # This dictionary will store cart objects, with session IDs as keys.
 # Structure: { "session_id_1": {"item_1": qty, "item_2": qty}, "session_id_2": ... }
 # WARNING: This is an in-memory store. It will be cleared if the server restarts.
+# Session cleanup is handled in backend.main via cleanup_session()
 
 log = logging.getLogger(__name__)
 
-session_carts = {}
+session_carts: Dict[str, defaultdict] = {}
 
 def get_cart_for_session(session_id: str) -> defaultdict:
     """Retrieves or creates a cart object for a given session ID."""
     if session_id not in session_carts:
         session_carts[session_id] = defaultdict(int)
     return session_carts[session_id]
+
+def cleanup_cart_for_session(session_id: str) -> None:
+    """Clean up cart data for expired session. Called by session cleanup thread."""
+    if session_id in session_carts:
+        session_carts.pop(session_id, None)
+        log.debug(f"Cleaned up cart for session: {session_id}")
 
 @tool
 def add_to_cart(session_id: str, item_name: str, quantity: int) -> str:

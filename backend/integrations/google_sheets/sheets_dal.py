@@ -13,9 +13,10 @@ log = logging.getLogger(__name__)
 
 def _sheet_id() -> str:
     sid = os.getenv("GOOGLE_SHEET_ID")
-    log.info("DEBUG GOOGLE_SHEET_ID =", sid)   # temporary
     if not sid:
         raise RuntimeError("GOOGLE_SHEET_ID is not set. Add it to backend/.env.")
+    # Only log first 8 characters for debugging (removed in production)
+    log.debug(f"Using sheet ID: {sid[:8] if sid else 'None'}...")
     return sid
 
 def _tab() -> str:

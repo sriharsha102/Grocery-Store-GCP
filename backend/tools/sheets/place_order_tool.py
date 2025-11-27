@@ -7,6 +7,7 @@ from pydantic.v1 import BaseModel, Field, EmailStr
 from langchain.tools import tool
 
 BASE = os.getenv("API_BASE","http://localhost:8080")
+REQUEST_TIMEOUT = int(os.getenv("EXTERNAL_REQUEST_TIMEOUT", "30"))
 
 class LineItem(BaseModel):
     name: str = Field(..., description="Exact product name")
@@ -58,7 +59,13 @@ def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> 
     # Hit the new finalize endpoint (single source of truth)
     url = f"{BASE}/api/inventory/finalize_receipt"
     try:
-        r = requests.post(url, json=payload, timeout=20)
+        r = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        return {
+            "error": "finalize request timeout",
+            "message": f"Request timed out after {REQUEST_TIMEOUT}s",
+            "url": url,
+        }
     except Exception as e:
         return {
             "error": "finalize request failed",
