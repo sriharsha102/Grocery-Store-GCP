@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict
 import requests
+import stripe
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
@@ -23,7 +24,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from backend.routers.inventory import router as inventory_router
 
 # Tools & SDKs
-from backend.state.session import set_websocket, cleanup_session
+from backend.state.session import set_websocket, cleanup_session, get_websocket
 from backend.tools.tool_config import get_all_tools
 
 
@@ -63,6 +64,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL") or "gpt-4o-mini"
 REQUEST_TIMEOUT = int(os.getenv("EXTERNAL_REQUEST_TIMEOUT", "30"))
 SESSION_TIMEOUT_HOURS = int(os.getenv("SESSION_TIMEOUT_HOURS", "2"))
+
+# Stripe webhook secret (optional for local dev, required for production)
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+if STRIPE_WEBHOOK_SECRET:
+    logger.info("Stripe webhook secret configured - webhook endpoint will verify signatures")
+else:
+    logger.warning("⚠️ STRIPE_WEBHOOK_SECRET not set - webhook endpoint will accept unverified requests (DEV ONLY)")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # FastAPI app
@@ -119,6 +127,11 @@ def health():
 session_memories: Dict[str, ConversationBufferMemory] = {}
 session_last_activity: Dict[str, datetime] = {}
 
+# Track fulfilled orders for idempotency (prevents duplicate processing)
+# Key: stripe_session_id, Value: fulfillment details
+# TODO: In production, replace with Redis or database for persistence
+fulfilled_orders: Dict[str, dict] = {}
+
 def update_session_activity(session_id: str):
     """Track last activity time for session cleanup."""
     session_last_activity[session_id] = datetime.now()
@@ -164,6 +177,111 @@ def cleanup_old_sessions():
 cleanup_thread = threading.Thread(target=cleanup_old_sessions, daemon=True)
 cleanup_thread.start()
 logger.info("Session cleanup thread started")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Stripe Webhook Fulfillment (Idempotent)
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def fulfill_order_webhook(chat_session_id: str, stripe_session_id: str):
+    """
+    Fulfill order after Stripe confirms payment via webhook.
+
+    CRITICAL: This function MUST be idempotent (safe to call multiple times).
+    Stripe may send the same webhook multiple times for reliability.
+
+    Args:
+        chat_session_id: Our internal session ID from checkout metadata
+        stripe_session_id: Stripe checkout session ID (used as idempotency key)
+
+    Returns:
+        dict with status and details
+    """
+    try:
+        # Idempotency check: Have we already fulfilled this Stripe session?
+        if stripe_session_id in fulfilled_orders:
+            fulfillment_info = fulfilled_orders[stripe_session_id]
+            logger.info(
+                f"Order already fulfilled for Stripe session {stripe_session_id} "
+                f"at {fulfillment_info.get('fulfilled_at')}, skipping duplicate webhook"
+            )
+            return {
+                "status": "already_fulfilled",
+                "order": fulfillment_info,
+                "message": "This payment was already processed"
+            }
+
+        logger.info(f"Starting order fulfillment for session {chat_session_id}")
+        update_session_activity(chat_session_id)
+
+        # Get the agent to process payment confirmation
+        memory = get_memory_for_session(chat_session_id)
+        agent_executor = create_agent(memory)
+
+        # Trigger the agent to finalize the order
+        # The agent will call finalize_stock and then ask for email to place_order
+        response = await agent_executor.ainvoke({
+            "input": (
+                "The payment has been verified by Stripe webhook. "
+                "Please immediately call finalize_stock to update inventory, "
+                "then ask for the customer's email to send the receipt."
+            )
+        })
+
+        ai_response = response.get("output", "")
+        logger.info(f"Agent response after webhook: {ai_response[:100]}...")
+
+        # Try to send response via WebSocket if user is still connected
+        ws = get_websocket(chat_session_id)
+        websocket_sent = False
+
+        if ws:
+            try:
+                await ws.send_json({
+                    "type": "agent_message",
+                    "ai_message": ai_response
+                })
+                websocket_sent = True
+                logger.info(f"Sent webhook fulfillment message via WebSocket to {chat_session_id}")
+            except Exception as e:
+                # WebSocket failed, but that's OK - user can refresh to see updated state
+                logger.warning(
+                    f"Could not send via WebSocket for {chat_session_id}: {e}. "
+                    f"User will see update on next interaction or page refresh."
+                )
+        else:
+            logger.info(
+                f"No active WebSocket for {chat_session_id}. "
+                f"User will see update when they reconnect or refresh."
+            )
+
+        # Mark as fulfilled (use Stripe session ID as idempotency key)
+        fulfilled_orders[stripe_session_id] = {
+            "chat_session_id": chat_session_id,
+            "stripe_session_id": stripe_session_id,
+            "fulfilled_at": datetime.now().isoformat(),
+            "websocket_sent": websocket_sent,
+            "agent_response": ai_response[:200]  # Store first 200 chars
+        }
+
+        logger.info(f"✅ Successfully fulfilled order for session {chat_session_id}")
+
+        return {
+            "status": "fulfilled",
+            "chat_session_id": chat_session_id,
+            "stripe_session_id": stripe_session_id,
+            "websocket_sent": websocket_sent,
+            "response": ai_response
+        }
+
+    except Exception as e:
+        logger.exception(f"❌ Error fulfilling order for {chat_session_id}: {e}")
+        # Don't raise - return error status so webhook handler can still return 200
+        return {
+            "status": "error",
+            "chat_session_id": chat_session_id,
+            "stripe_session_id": stripe_session_id,
+            "error": str(e)
+        }
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(ws: WebSocket, session_id: str):
@@ -371,6 +489,171 @@ async def chat_endpoint(request: ChatRequest):
             },
             status_code=500
         )
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Stripe Webhook Endpoint
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    """
+    Stripe webhook handler for payment events.
+
+    This endpoint is called by Stripe directly when payment events occur.
+    It's MORE RELIABLE than WebSocket because:
+    - Stripe retries failed webhooks for up to 3 days
+    - Works even if user's browser crashes or closes
+    - Independent of WebSocket connection state
+
+    Security: Validates webhook signature to prevent spoofing attacks.
+
+    Supported events:
+    - checkout.session.completed: Payment succeeded
+    - checkout.session.expired: User abandoned checkout
+    """
+    try:
+        # Get raw body for signature verification
+        payload = await request.body()
+        sig_header = request.headers.get("stripe-signature")
+
+        # Verify webhook signature (CRITICAL for security!)
+        if STRIPE_WEBHOOK_SECRET:
+            if not sig_header:
+                logger.warning("Stripe webhook called without signature header")
+                return JSONResponse(
+                    {"error": "No signature header"},
+                    status_code=400
+                )
+
+            try:
+                # Construct verified event from payload and signature
+                event = stripe.Webhook.construct_event(
+                    payload, sig_header, STRIPE_WEBHOOK_SECRET
+                )
+                logger.info(f"✅ Webhook signature verified for event {event['id']}")
+
+            except ValueError as e:
+                # Invalid payload
+                logger.error(f"Invalid payload in Stripe webhook: {e}")
+                return JSONResponse(
+                    {"error": "Invalid payload"},
+                    status_code=400
+                )
+
+            except stripe.error.SignatureVerificationError as e:
+                # Invalid signature - possible attack!
+                logger.error(f"⚠️ Invalid signature in Stripe webhook: {e}")
+                return JSONResponse(
+                    {"error": "Invalid signature"},
+                    status_code=400
+                )
+        else:
+            # Development mode - no signature verification
+            logger.warning("⚠️ Webhook signature verification SKIPPED (dev mode)")
+            import json
+            event = json.loads(payload)
+
+        # Log the event
+        event_type = event.get('type', 'unknown')
+        event_id = event.get('id', 'unknown')
+        logger.info(f"📨 Stripe webhook received: type={event_type}, id={event_id}")
+
+        # Handle checkout.session.completed event
+        if event_type == 'checkout.session.completed':
+            session = event['data']['object']
+
+            # Extract metadata
+            chat_session_id = session.get('metadata', {}).get('chat_session_id')
+            payment_status = session.get('payment_status')
+            stripe_session_id = session.get('id')
+            customer_email = session.get('customer_details', {}).get('email')
+
+            logger.info(
+                f"💳 Payment completed - "
+                f"Stripe ID: {stripe_session_id}, "
+                f"Chat session: {chat_session_id}, "
+                f"Status: {payment_status}, "
+                f"Email: {customer_email}"
+            )
+
+            # Validate we have the chat session ID
+            if not chat_session_id:
+                logger.error(
+                    f"❌ Webhook missing chat_session_id in metadata for Stripe session {stripe_session_id}"
+                )
+                # Still return 200 to acknowledge receipt (prevents Stripe retries)
+                return {
+                    "received": True,
+                    "error": "missing_session_id",
+                    "stripe_session_id": stripe_session_id
+                }
+
+            # Only fulfill if payment is confirmed
+            if payment_status == 'paid':
+                # Fulfill the order (idempotent function)
+                fulfillment_result = await fulfill_order_webhook(
+                    chat_session_id,
+                    stripe_session_id
+                )
+
+                logger.info(f"Fulfillment result: {fulfillment_result.get('status')}")
+
+                return {
+                    "received": True,
+                    "event_type": event_type,
+                    "fulfillment": fulfillment_result
+                }
+            else:
+                logger.warning(
+                    f"⚠️ Payment not completed: status={payment_status} for {chat_session_id}"
+                )
+                return {
+                    "received": True,
+                    "event_type": event_type,
+                    "payment_status": payment_status,
+                    "message": "Payment not completed"
+                }
+
+        # Handle checkout.session.expired event (optional)
+        elif event_type == 'checkout.session.expired':
+            session = event['data']['object']
+            chat_session_id = session.get('metadata', {}).get('chat_session_id')
+            stripe_session_id = session.get('id')
+
+            logger.info(
+                f"⏰ Checkout session expired: "
+                f"Stripe ID: {stripe_session_id}, "
+                f"Chat session: {chat_session_id}"
+            )
+
+            # Could notify user via WebSocket if they're still connected
+            # For now, just log it
+            return {
+                "received": True,
+                "event_type": event_type,
+                "message": "Checkout session expired"
+            }
+
+        # Other events - acknowledge but don't process
+        else:
+            logger.info(f"ℹ️ Unhandled webhook event type: {event_type}")
+            return {
+                "received": True,
+                "event_type": event_type,
+                "message": "Event acknowledged but not processed"
+            }
+
+    except Exception as e:
+        # Log error but still return 200 to acknowledge receipt
+        # This prevents Stripe from retrying indefinitely
+        error_id = str(uuid.uuid4())
+        logger.exception(f"❌ Error {error_id} processing Stripe webhook: {e}")
+
+        return {
+            "received": True,
+            "error": str(e),
+            "error_id": error_id
+        }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Routers
