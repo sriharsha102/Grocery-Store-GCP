@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { ChatWindow } from "@/components/ChatWindow";
 import { ChatInput } from "@/components/ChatInput";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -29,54 +29,63 @@ const Index = () => {
         return `${protocol}://${window.location.host}/api/ws/${sessionId}`;
     }, [sessionId]);
 
-    // Use reconnecting WebSocket hook
-    const { ws, status, isConnected, send } = useReconnectingWebSocket(wsUrl, {
-        onOpen: () => {
-            console.info("Index: WebSocket connection established successfully!");
-            console.info(`Index: Session UUID: ${sessionId}`);
-        },
-        onClose: (event) => {
-            console.warn(`Index: WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
-        },
-        onMessage: (event) => {
-            try {
-                const msg = JSON.parse(event.data);
-                console.debug("Index: WebSocket message received:", msg);
+    // Memoized WebSocket callbacks to prevent reconnection loop
+    const handleWebSocketOpen = useCallback(() => {
+        console.info("Index: WebSocket connection established successfully!");
+        console.info(`Index: Session UUID: ${sessionId}`);
+    }, [sessionId]);
 
-                if (msg.type === 'payment_intent_created' && msg.client_secret) {
-                    console.info(`Index: Received 'payment_intent_created' event.`);
-                    console.debug(`Index: Client Secret: ${msg.client_secret.substring(0, 10)}...`);
+    const handleWebSocketClose = useCallback((event: CloseEvent) => {
+        console.warn(`Index: WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
+    }, []);
 
-                    setClientSecret(msg.client_secret);
+    const handleWebSocketMessage = useCallback((event: MessageEvent) => {
+        try {
+            const msg = JSON.parse(event.data);
+            console.debug("Index: WebSocket message received:", msg);
 
-                    if (msg.paypal_order_id) {
-                        setPaypalOrderId(msg.paypal_order_id);
-                        console.info(`Index: Paypal order id: ${msg.paypal_order_id}`);
-                    }
+            if (msg.type === 'payment_intent_created' && msg.client_secret) {
+                console.info(`Index: Received 'payment_intent_created' event.`);
+                console.debug(`Index: Client Secret: ${msg.client_secret.substring(0, 10)}...`);
 
-                    setPanelOpen(true);
-                    setShowPaymentPanelButton(true);
-                } else if (msg.type === 'agent_message' && msg.ai_message) {
-                    console.info(`Index: Received 'agent_message' event.`);
-                    const aiMessage: Message = {
-                        id: (Date.now() + 1).toString(),
-                        text: msg.ai_message,
-                        sender: 'assistant',
-                        timestamp: new Date(),
-                    };
-                    setMessages(prev => [...prev, aiMessage]);
-                    setIsLoading(false);
-                } else {
-                    console.warn(`Index: Received unknown message type or incomplete data:`, msg);
+                setClientSecret(msg.client_secret);
+
+                if (msg.paypal_order_id) {
+                    setPaypalOrderId(msg.paypal_order_id);
+                    console.info(`Index: Paypal order id: ${msg.paypal_order_id}`);
                 }
-            } catch (e) {
-                console.error("Index: Failed to parse WebSocket message:", e);
+
+                setPanelOpen(true);
+                setShowPaymentPanelButton(true);
+            } else if (msg.type === 'agent_message' && msg.ai_message) {
+                console.info(`Index: Received 'agent_message' event.`);
+                const aiMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    text: msg.ai_message,
+                    sender: 'assistant',
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, aiMessage]);
                 setIsLoading(false);
+            } else {
+                console.warn(`Index: Received unknown message type or incomplete data:`, msg);
             }
-        },
-        onError: (error) => {
-            console.error("Index: WebSocket error: ", error);
-        },
+        } catch (e) {
+            console.error("Index: Failed to parse WebSocket message:", e);
+            setIsLoading(false);
+        }
+    }, []);
+
+    const handleWebSocketError = useCallback((error: Event) => {
+        console.error("Index: WebSocket error: ", error);
+    }, []);
+
+    // Use reconnecting WebSocket hook with memoized callbacks
+    const { ws, status, isConnected, send } = useReconnectingWebSocket(wsUrl, {
+        onOpen: handleWebSocketOpen,
+        onClose: handleWebSocketClose,
+        onMessage: handleWebSocketMessage,
+        onError: handleWebSocketError,
         heartbeatInterval: 30000, // 30 seconds
         reconnectInterval: 2000, // 2 seconds
         maxReconnectAttempts: 10,
