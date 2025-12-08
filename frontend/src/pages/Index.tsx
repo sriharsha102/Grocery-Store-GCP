@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { ChatWindow } from "@/components/ChatWindow";
 import { ChatInput } from "@/components/ChatInput";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { type Message } from "@/components/ChatMessage";
 import { v4 as uuidv4 } from 'uuid';
 import PaymentPanel from "@/components/PaymentPanel/PaymentPanel";
@@ -167,9 +166,6 @@ const Index = () => {
 
     return (
         <div className="h-screen flex flex-col bg-gradient-to-b from-background to-chat-bg ">
-            {/* Connection Status Indicator */}
-            <ConnectionStatus status={status} />
-
             {/* Header */}
             <div className="border-b border-border bg-background/95 backdrop-blur-sm px-4 py-3">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
