@@ -15,12 +15,22 @@ interface PaymentPanelProps {
     setIsOpen: Dispatch<SetStateAction<boolean>>,
     clientSecret: string,
     paypalOrderId: string,
-    socket: WebSocket,
-    setMessages: Dispatch<SetStateAction<Message[]>>
-    // sessionId: String
+    socket: WebSocket | null,
+    setMessages: Dispatch<SetStateAction<Message[]>>,
+    sendMessage: (data: any) => boolean,
+    isSocketConnected: boolean
 }
 
-function PaymentPanel({ isOpen, setIsOpen, clientSecret, paypalOrderId, socket, setMessages }: PaymentPanelProps) {
+function PaymentPanel({
+    isOpen,
+    setIsOpen,
+    clientSecret,
+    paypalOrderId,
+    socket,
+    setMessages,
+    sendMessage,
+    isSocketConnected
+}: PaymentPanelProps) {
 
 
     const initialOptions = {
@@ -49,30 +59,48 @@ function PaymentPanel({ isOpen, setIsOpen, clientSecret, paypalOrderId, socket, 
     // }, [isComplete]);
 
     const handleComplete = useCallback(() => {
-        console.log("payment completed!")
+        console.log("[PaymentPanel] Payment completed!");
 
-        // send a message here (fake AI) that says Please hold on while I confirm your payment was made
-
+        // Show confirmation message
         const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
             text: "Please wait while I confirm your payment.",
             sender: 'assistant',
             timestamp: new Date(),
         };
-        setMessages(prev => [...prev, aiMessage])
+        setMessages(prev => [...prev, aiMessage]);
 
-        setIsComplete(true)
+        setIsComplete(true);
         setIsOpen(false);
 
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                event: 'payment_complete', // Send the event name as part of the data
-                status: 'success'
-            }));
+        // Attempt to send payment complete notification via WebSocket
+        const notificationSent = sendMessage({
+            event: 'payment_complete',
+            status: 'success'
+        });
+
+        if (!notificationSent) {
+            console.error("[PaymentPanel] Failed to send payment notification via WebSocket");
+
+            // Show error message to user
+            const errorMessage: Message = {
+                id: (Date.now() + 2).toString(),
+                text: "⚠️ Payment completed, but there was a connection issue. Please refresh the page or contact support with your payment confirmation.",
+                sender: 'assistant',
+                timestamp: new Date(),
+            };
+            setMessages(prev => [...prev, errorMessage]);
+
+            // TODO: Implement HTTP fallback here (Solution 2)
+            // Example:
+            // fetch('/api/payment-complete', {
+            //     method: 'POST',
+            //     body: JSON.stringify({ session_id: sessionId })
+            // });
         } else {
-            console.log("Oh no, socket was closed, payment notification didn't go through")
+            console.info("[PaymentPanel] Payment notification sent successfully");
         }
-    }, [socket]);
+    }, [sendMessage, setMessages, setIsComplete, setIsOpen]);
 
     return (
         <>

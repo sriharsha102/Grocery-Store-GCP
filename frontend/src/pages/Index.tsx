@@ -1,13 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ChatWindow } from "@/components/ChatWindow";
 import { ChatInput } from "@/components/ChatInput";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { type Message } from "@/components/ChatMessage";
 import { v4 as uuidv4 } from 'uuid';
 import PaymentPanel from "@/components/PaymentPanel/PaymentPanel";
-import { useRef } from "react"; 
-
-
+import { useReconnectingWebSocket, WebSocketStatus } from "@/hooks/useReconnectingWebSocket";
 
 // Define the shape of the expected API response
 interface ApiResponse {
@@ -18,36 +17,28 @@ interface ApiResponse {
 const Index = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [sessionId, setSessionId] = useState<string>('');
-    const [ws, setWs] = useState<WebSocket | null>(null);
+    const [sessionId] = useState<string>(() => uuidv4()); // Generate once
     const [isPanelOpen, setPanelOpen] = useState(false);
     const [showPaymentPanelButton, setShowPaymentPanelButton] = useState(false);
     const [clientSecret, setClientSecret] = useState('');
     const [paypalOrderId, setPaypalOrderId] = useState('');
 
-    // Generate a session ID when the component mounts
-    useEffect(() => {
-        const didInit = { current: false };
-        const sessionUUID = uuidv4();
-        setSessionId(sessionUUID);
-        console.info(`Index: New session ID generated: ${sessionUUID}`);
-
-        // const newSocket = new WebSocket(`/api/ws/${sessionUUID}`);
+    // Construct WebSocket URL
+    const wsUrl = useMemo(() => {
         const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        const newSocket = new WebSocket(`${protocol}://${window.location.host}/api/ws/${sessionUUID}`);
-        setWs(newSocket);
+        return `${protocol}://${window.location.host}/api/ws/${sessionId}`;
+    }, [sessionId]);
 
-        newSocket.onopen = () => {
+    // Use reconnecting WebSocket hook
+    const { ws, status, isConnected, send } = useReconnectingWebSocket(wsUrl, {
+        onOpen: () => {
             console.info("Index: WebSocket connection established successfully!");
-            console.info(`Index: Session UUID: ${sessionUUID}`);
-        };
-
-        newSocket.onclose = (event) => {
+            console.info(`Index: Session UUID: ${sessionId}`);
+        },
+        onClose: (event) => {
             console.warn(`Index: WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
-            setWs(null);
-        };
-
-        newSocket.onmessage = (event) => {
+        },
+        onMessage: (event) => {
             try {
                 const msg = JSON.parse(event.data);
                 console.debug("Index: WebSocket message received:", msg);
@@ -55,14 +46,14 @@ const Index = () => {
                 if (msg.type === 'payment_intent_created' && msg.client_secret) {
                     console.info(`Index: Received 'payment_intent_created' event.`);
                     console.debug(`Index: Client Secret: ${msg.client_secret.substring(0, 10)}...`);
-                    
+
                     setClientSecret(msg.client_secret);
-                    
+
                     if (msg.paypal_order_id) {
                         setPaypalOrderId(msg.paypal_order_id);
                         console.info(`Index: Paypal order id: ${msg.paypal_order_id}`);
                     }
-                    
+
                     setPanelOpen(true);
                     setShowPaymentPanelButton(true);
                 } else if (msg.type === 'agent_message' && msg.ai_message) {
@@ -82,30 +73,29 @@ const Index = () => {
                 console.error("Index: Failed to parse WebSocket message:", e);
                 setIsLoading(false);
             }
-        };
-
-        newSocket.onerror = (error) => {
+        },
+        onError: (error) => {
             console.error("Index: WebSocket error: ", error);
-        };
+        },
+        heartbeatInterval: 30000, // 30 seconds
+        reconnectInterval: 2000, // 2 seconds
+        maxReconnectAttempts: 10,
+    });
 
-        // "Send" an initial message to explain to the user what to do
+    // Display initial welcome message
+    useEffect(() => {
         const timer = setTimeout(() => {
-            const inititalMessage: Message = {
+            const initialMessage: Message = {
                 id: Date.now().toString(),
-                text: "Welcome to Bharat Bazar! 🛍️ - I'm your smart shopping assistant.\nYou can ask me about our top-selling items, browse our full menu, add things to your cart 🛒, and check out whenever you’re ready!",
+                text: "Welcome to Bharat Bazar! 🛍️ - I'm your smart shopping assistant.\nYou can ask me about our top-selling items, browse our full menu, add things to your cart 🛒, and check out whenever you're ready!",
                 sender: 'assistant',
                 timestamp: new Date()
             };
-            setMessages(prev => [...prev, inititalMessage]);
+            setMessages(prev => [...prev, initialMessage]);
             console.info("Index: Initial welcome message displayed.");
         }, 1000);
 
-        return () => {
-            // Cleanup function
-            console.info("Index: Component unmounting. Closing WebSocket.");
-            newSocket.close();
-            clearTimeout(timer);
-        };
+        return () => clearTimeout(timer);
     }, []);
 
     const handleSendMessage = async (messageText: string) => {
@@ -168,6 +158,9 @@ const Index = () => {
 
     return (
         <div className="h-screen flex flex-col bg-gradient-to-b from-background to-chat-bg ">
+            {/* Connection Status Indicator */}
+            <ConnectionStatus status={status} />
+
             {/* Header */}
             <div className="border-b border-border bg-background/95 backdrop-blur-sm px-4 py-3">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -212,6 +205,8 @@ const Index = () => {
                 paypalOrderId={paypalOrderId}
                 socket={ws}
                 setMessages={setMessages}
+                sendMessage={send}
+                isSocketConnected={isConnected}
             />
         </div>
     );

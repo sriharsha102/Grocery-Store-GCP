@@ -178,6 +178,13 @@ async def websocket_endpoint(ws: WebSocket, session_id: str):
         while True:
             data = await ws.receive_json()
             update_session_activity(session_id)
+
+            # Handle heartbeat/ping messages
+            if data.get("type") == "ping":
+                logging.debug(f"Received ping from session: {session_id}, sending pong")
+                await ws.send_json({"type": "pong"})
+                continue
+
             logging.info(f"WebSocket message from {session_id}: event={data.get('event')}")
 
             if data.get("event") == "payment_complete":
