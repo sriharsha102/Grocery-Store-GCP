@@ -1,4 +1,4 @@
-import React, { useState, Dispatch, SetStateAction, useCallback } from 'react';
+import React, { useState, Dispatch, SetStateAction, useCallback, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { type Message } from "@/components/ChatMessage";
@@ -6,7 +6,14 @@ import './Payment.css';
 import { PayPalButtons, PayPalScriptProvider } from '@paypal/react-paypal-js';
 import { CreateOrderActions, OnApproveActions } from '@paypal/paypal-js';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string);
+// Log the Stripe key availability at module load
+const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string;
+console.log('[PaymentPanel] Stripe key available:', STRIPE_KEY ? 'Yes' : 'No');
+if (STRIPE_KEY) {
+    console.log('[PaymentPanel] Stripe key prefix:', STRIPE_KEY.substring(0, 20) + '...');
+}
+
+const stripePromise = loadStripe(STRIPE_KEY);
 const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID as string
 
 // Define the type for the component's props
@@ -47,6 +54,15 @@ function PaymentPanel({
     // console.log("Client Secret in PaymentPanel:", clientSecret);
     const [isComplete, setIsComplete] = useState(false);
     const [open, setOpen] = useState(false);
+
+    // Log panel state changes for debugging
+    useEffect(() => {
+        if (isOpen) {
+            console.log('[PaymentPanel] Panel opened');
+            console.log('[PaymentPanel] Client secret available:', clientSecret ? 'Yes' : 'No');
+            console.log('[PaymentPanel] Stripe promise:', stripePromise ? 'Initialized' : 'Not initialized');
+        }
+    }, [isOpen, clientSecret]);
 
     // Prevent clicks inside the panel from closing it
     const handlePanelClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -125,7 +141,15 @@ function PaymentPanel({
                 <div className="panel-body flex-1 min-h-0 overflow-y-auto overscroll-contain">
                 {/* <div className="flex-grow p-4 overflow-y-auto min-h-0"> */}
                     {/* Only render the Stripe Checkout when the clientSecret is available. */}
-                    {clientSecret && stripePromise && EmbeddedCheckoutProvider && EmbeddedCheckout ? (
+                    {!clientSecret ? (
+                        <div className="flex items-center justify-center h-full">
+                            <p>Initializing payment...</p>
+                        </div>
+                    ) : !STRIPE_KEY ? (
+                        <div className="flex items-center justify-center h-full">
+                            <p style={{color: 'red'}}>Error: Stripe configuration missing. Please contact support.</p>
+                        </div>
+                    ) : clientSecret && stripePromise ? (
                         <EmbeddedCheckoutProvider
                             key={clientSecret}
                             stripe={stripePromise}
