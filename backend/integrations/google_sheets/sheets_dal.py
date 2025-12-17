@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _sheet_id() -> str:
-    sid = os.getenv("GOOGLE_SHEET_ID")
+    sid = os.getenv("GOOGLE_SHEET_ID").strip()
     if not sid:
         raise RuntimeError("GOOGLE_SHEET_ID is not set. Add it to backend/.env.")
     # Only log first 8 characters for debugging (removed in production)

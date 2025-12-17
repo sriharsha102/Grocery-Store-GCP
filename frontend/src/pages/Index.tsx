@@ -85,8 +85,8 @@ const Index = () => {
         onClose: handleWebSocketClose,
         onMessage: handleWebSocketMessage,
         onError: handleWebSocketError,
-        heartbeatInterval: 30000, // 30 seconds
-        reconnectInterval: 2000, // 2 seconds
+        heartbeatInterval: 60000, // 30 seconds
+        reconnectInterval: 5000, // 2 seconds
         maxReconnectAttempts: 10,
     });
 
