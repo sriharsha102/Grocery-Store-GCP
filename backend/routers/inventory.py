@@ -218,31 +218,14 @@ def finalize_stock(req: FinalizeStockRequest):
 @router.post("/finalize_receipt")
 def finalize_receipt(req: FinalizeOrderRequest):
 
-    log.info("finalize_receipt(): called",
-             extra={
-                 "session_id": req.session_id,
-                 "has_email": bool(req.customer_email),
-                 "items_count": len(req.items) if req.items else 0
-             })
-
     if not req.customer_email or not req.customer_email.strip():
-        log.warning("finalize_receipt(): missing customer_email",extra={"session_id": req.session_id})
         raise HTTPException(status_code=400, detail="customer_email is required")
 
     order_id = f"ORD-{int(time.time())}"
-    log.info("finalize_receipt(): order_id generated",
-             extra={"order_id": order_id})
 
     email_sent = False
     email_debug = {}
 
-    log.info("finalize_receipt(): email config check",
-        extra={
-            "EMAIL_MODE": EMAIL_MODE,
-            "APPS_SCRIPT_EMAIL_URL_set": bool(APPS_SCRIPT_EMAIL_URL),
-            "EMAIL_WEBHOOK_SECRET_set": bool(EMAIL_WEBHOOK_SECRET),
-            "OWNER_EMAIL_set": bool(OWNER_EMAIL)
-        })
 
     if EMAIL_MODE == "APPS_SCRIPT" and APPS_SCRIPT_EMAIL_URL and EMAIL_WEBHOOK_SECRET:
         payload = {
@@ -255,15 +238,8 @@ def finalize_receipt(req: FinalizeOrderRequest):
             },
             "owner_email": OWNER_EMAIL,
         }
-        log.info("finalize_receipt(): sending Apps Script webhook",
-                extra={
-                    "order_id": order_id,
-                    "to": req.customer_email,
-                    "items_count": len(req.items),
-                    "url": APPS_SCRIPT_EMAIL_URL
-                })
+
         try:
-            log.info(payload)
             er = requests.post(APPS_SCRIPT_EMAIL_URL, json=payload, timeout=REQUEST_TIMEOUT)
             # Safe JSON parsing
             try:
