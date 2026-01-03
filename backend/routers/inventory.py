@@ -53,15 +53,18 @@ class OrderItem(BaseModel):
 class OrderRequest(BaseModel):
     customer_email: EmailStr
     items: List[OrderItem]
+    category: str | None = None
 
 class FinalizeOrderRequest(BaseModel):
     session_id: str
     customer_email: EmailStr
     items: List[OrderItem]
+    category: str | None = None
 
 class FinalizeStockRequest(BaseModel):
     session_id: str
     items: List[OrderItem]
+    category: str | None = None
 
 class FinalizeReceiptRequest(BaseModel):
     session_id: str
@@ -69,24 +72,24 @@ class FinalizeReceiptRequest(BaseModel):
 # ---------- Read-only endpoints ----------
 
 @router.get("/top")
-def top():
+def top(category: str | None = None):
     """
     Return top sellers by orders_count from the sheet.
     """
     try:
-        return {"items": get_top_selling_items()}
+        return {"items": get_top_selling_items(tab=category)}
     except Exception as e:
         log.exception("top selling items failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/menu")
-def menu():
+def menu(category: str | None = None):
     """
     Return full current menu (name, price, quantity, etc.) from the sheet.
     """
     try:
-        return {"items": get_menu()}
+        return {"items": get_menu(tab=category)}
     except Exception as e:
         log.exception("menu failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -123,7 +126,7 @@ def order(req: OrderRequest):
             raise HTTPException(status_code=400, detail=f"Invalid qty for {it.name}")
 
     # 1) decrement quantities in the sheet
-    result = decrement_quantities([(it.name, it.qty) for it in req.items])
+    result = decrement_quantities([(it.name, it.qty) for it in req.items], tab=req.category)
     if result["out_of_stock"]:
         raise HTTPException(
             status_code=409,
@@ -173,7 +176,7 @@ def finalize_stock(req: FinalizeStockRequest):
             raise HTTPException(status_code=400, detail=f"Invalid qty for {it.name}")
 
     try:
-        result = decrement_quantities([(it.name, it.qty) for it in req.items])
+        result = decrement_quantities([(it.name, it.qty) for it in req.items], tab=req.category)
     except Exception as e:
         log.exception("finalize_stock(): decrement_quantities crashed")
         raise HTTPException(status_code=500, detail=f"Sheet update failed: {e}")

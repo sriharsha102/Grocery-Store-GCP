@@ -49,13 +49,13 @@ def _col_letter(col_idx_zero_based: int) -> str:
         s = chr(65 + r) + s
     return s
 
-def _read_all() -> tuple[list[str], list[list[str]]]:
+def _read_all(tab: str | None = None) -> tuple[list[str], list[list[str]]]:
     """
     Reads header and all rows for columns A..E (name, price, quantity, date, orders_count).
     """
     svc = _svc()
     sheet_id = _sheet_id()
-    tab = _tab()
+    tab = tab or _tab()
 
     # IMPORTANT: include column E so orders_count is present
     hdr = (
@@ -72,7 +72,7 @@ def _read_all() -> tuple[list[str], list[list[str]]]:
     )
     return hdr, rows
 
-def _rows_as_dicts() -> List[Dict[str, Any]]:
+def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
     """
     Read all rows from the Inventory sheet, map header -> value,
     and normalize some known columns so downstream code can trust the shape.
@@ -89,7 +89,7 @@ def _rows_as_dicts() -> List[Dict[str, Any]]:
     We still include ANY other columns in the sheet automatically too,
     because we start from the raw header dict.
     """
-    hdr, rows = _read_all()
+    hdr, rows = _read_all(tab=tab)
     header = [h.strip().lower() for h in hdr]
     out: List[Dict[str, Any]] = []
     # Find column indices by header (case-insensitive)
@@ -132,17 +132,17 @@ def _rows_as_dicts() -> List[Dict[str, Any]]:
 # Public DAL
 # ──────────────────────────────────────────────────────────────────────────────
 
-def get_menu() -> List[Dict]:
+def get_menu(tab: str | None = None) -> List[Dict]:
     """
     Returns full inventory rows with normalized fields.
     """
-    return _rows_as_dicts()
+    return _rows_as_dicts(tab=tab)
 
-def get_top_selling_items() -> List[Dict]:
+def get_top_selling_items(tab: str | None = None) -> List[Dict]:
     """
     Returns top selling items from top_selling_items column.
     """
-    items = _rows_as_dicts()
+    items = _rows_as_dicts(tab=tab)
     selected_cols = ["name", "price", "quantity", "top_selling_items"]
     
     selected_cols = [c.lower() for c in selected_cols]
@@ -156,7 +156,7 @@ def get_top_selling_items() -> List[Dict]:
 
 # integrations/google_sheets/sheets_dal.py
 
-def decrement_quantities(order_items: List[Tuple[str, int]]) -> Dict:
+def decrement_quantities(order_items: List[Tuple[str, int]], tab: str | None = None) -> Dict:
     """
     order_items: [("Madras Coffee", 2), ("Buttermilk", 1), ...]
     We:
@@ -166,7 +166,7 @@ def decrement_quantities(order_items: List[Tuple[str, int]]) -> Dict:
     - return out_of_stock if any problem
     """
     svc = _svc()
-    hdr, rows = _read_all()
+    hdr, rows = _read_all(tab=tab)
 
     # figure out which column is which
     # expected headers: name | quantity | (maybe price) | date | orders_count
@@ -220,7 +220,7 @@ def decrement_quantities(order_items: List[Tuple[str, int]]) -> Dict:
     result = []
 
     sheet_id = _sheet_id()
-    tab = _tab()
+    tab = tab or _tab()
 
     for key, want in normalized_orders:
         rownum, row = idx[key]
