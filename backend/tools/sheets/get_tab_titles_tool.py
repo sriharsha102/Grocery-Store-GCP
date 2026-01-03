@@ -3,7 +3,7 @@ import os
 import requests
 from langchain_core.tools import tool
 
-BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")  # align with other tools; override with API_BASE if needed
+BASE = os.getenv("API_BASE", "http://localhost:8080")  # align with other tools; override with API_BASE if needed
 
 
 def fetch_tab_titles() -> dict:
