@@ -1,12 +1,21 @@
 # backend/tools/sheets/place_order_tool.py
 
 import os
+import logging
+import time
 import requests
 from typing import List
 from pydantic.v1 import BaseModel, Field, EmailStr
 from langchain.tools import tool
+from backend.tools.cart.cart_tool import clear_cart
 
-BASE = os.getenv("API_BASE","http://localhost:8080")
+log = logging.getLogger(__name__)
+
+# Email configuration
+OWNER_EMAIL = os.getenv("OWNER_EMAIL", "")
+EMAIL_MODE = os.getenv("EMAIL_MODE", "APPS_SCRIPT").upper()
+APPS_SCRIPT_EMAIL_URL = os.getenv("APPS_SCRIPT_EMAIL_URL", "")
+EMAIL_WEBHOOK_SECRET = os.getenv("EMAIL_WEBHOOK_SECRET", "")
 REQUEST_TIMEOUT = int(os.getenv("EXTERNAL_REQUEST_TIMEOUT", "30"))
 
 class LineItem(BaseModel):
@@ -41,6 +50,8 @@ def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> 
       1) `stripe_checkout_status_tool` returned status == 'paid'
       2) You collected the customer's email
       3) You pass ONLY the items they just paid for
+
+    Calls backend functions directly instead of making HTTP requests.
     """
 
     # Hard gate: do not proceed without an email
@@ -49,51 +60,56 @@ def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> 
             "error": "missing_customer_email",
             "message": "Customer email is required before finalizing the receipt."
         }
-    
-    payload = {
-        "session_id": session_id,
-        "customer_email": customer_email,
-        "items": [{"name": i.name, "qty": i.qty} for i in items],
-    }
 
-    # Hit the new finalize endpoint (single source of truth)
-    url = f"{BASE}/api/inventory/finalize_receipt"
-    try:
-        r = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
-    except requests.exceptions.Timeout:
-        return {
-            "error": "finalize request timeout",
-            "message": f"Request timed out after {REQUEST_TIMEOUT}s",
-            "url": url,
-        }
-    except Exception as e:
-        return {
-            "error": "finalize request failed",
-            "exception": str(e),
-            "url": url,
-            "payload": payload,
+    order_id = f"ORD-{int(time.time())}"
+
+    # Send receipt email via Apps Script
+    email_sent = False
+    email_debug = {}
+
+    if EMAIL_MODE == "APPS_SCRIPT" and APPS_SCRIPT_EMAIL_URL and EMAIL_WEBHOOK_SECRET:
+        payload = {
+            "secret": EMAIL_WEBHOOK_SECRET,
+            "type": "receipt",
+            "order": {
+                "order_id": order_id,
+                "customer_email": customer_email,
+                "items": [{"name": i.name, "qty": i.qty} for i in items],
+            },
+            "owner_email": OWNER_EMAIL,
         }
 
-    # Try to parse response
+        try:
+            er = requests.post(APPS_SCRIPT_EMAIL_URL, json=payload, timeout=REQUEST_TIMEOUT)
+            try:
+                er_json = er.json()
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                er_json = {"raw": er.text, "parse_error": True}
+
+            email_debug = {"status": er.status_code, "body": er_json}
+            if er.status_code == 200 and isinstance(er_json, dict) and er_json.get("ok") is True:
+                email_sent = True
+        except requests.exceptions.Timeout:
+            log.error(f"Timeout sending receipt email after {REQUEST_TIMEOUT}s")
+            email_debug = {"error": "Request timeout"}
+        except Exception as e:
+            email_debug = {"error": str(e)}
+            log.exception("place_order: error sending receipt email")
+    else:
+        log.warning("place_order: missing webhook config, skipping email")
+
+    # Clear the cart
+    cart_cleared = False
     try:
-        data = r.json()
+        clear_cart(session_id)
+        cart_cleared = True
     except Exception:
-        data = {"raw_text": r.text}
+        log.exception("place_order: failed to clear cart for session %s", session_id)
 
-    if r.status_code == 200:
-        # Success case
-        return {
-            "status": "RECEIPT_SENT",
-            "order": data.get("order"),
-            "cart_cleared": data.get("cart_cleared", False),
-            "email_sent": data.get("email_sent", False),
-        }
-
-    # Failure (e.g. out-of-stock race condition)
     return {
-        "error": "finalize_receipt_failed",
-        "status_code": r.status_code,
-        "response": data,
-        "cart_cleared": False,
-        "email_sent": False,
+        "status": "RECEIPT_SENT",
+        "order": {"order_id": order_id, "status": "RECEIPT_SENT"},
+        "cart_cleared": cart_cleared,
+        "email_sent": email_sent,
+        "email_debug": email_debug,
     }

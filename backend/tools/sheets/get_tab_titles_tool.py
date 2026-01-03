@@ -1,36 +1,29 @@
 # backend/tools/sheets/get_tab_titles_tool.py
 import os
-import requests
+import logging
 from langchain_core.tools import tool
+from backend.integrations.google_sheets.sheets_dal import get_tab_titles as dal_get_tab_titles
 
-BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")  # align with other tools; override with API_BASE if needed
-FALLBACK_BASE = "http://localhost:8080"
+log = logging.getLogger(__name__)
+
+# Read allowlist/denylist from environment
+TAB_ALLOWLIST = [t.strip() for t in os.getenv("SHEETS_TAB_ALLOWLIST", "").split(",") if t.strip()]
+TAB_DENYLIST = [t.strip() for t in os.getenv("SHEETS_TAB_DENYLIST", "").split(",") if t.strip()]
 
 
 def fetch_tab_titles() -> dict:
     """
-    Calls the backend categories endpoint and returns {"categories": [...]}
+    Calls Google Sheets directly and returns {"categories": [...]}
     """
-    primary_base = os.getenv("API_BASE", BASE)
-    bases_to_try = [primary_base]
-    if FALLBACK_BASE not in bases_to_try:
-        bases_to_try.append(FALLBACK_BASE)
-
-    last_error = None
-    for base_url in bases_to_try:
-        try:
-            r = requests.get(f"{base_url}/api/inventory/categories", timeout=8)
-            if r.status_code == 200:
-                return r.json()
-            last_error = r.text
-        except requests.exceptions.ConnectionError as ce:
-            last_error = f"ConnectionError to {base_url}: {ce}"
-            continue
-        except Exception as e:
-            last_error = f"{type(e).__name__}: {e}"
-            break
-
-    return {"error": last_error or "Unknown error contacting backend"}
+    try:
+        titles = dal_get_tab_titles(
+            allowlist=TAB_ALLOWLIST or None,
+            denylist=TAB_DENYLIST or None,
+        )
+        return {"categories": titles}
+    except Exception as e:
+        log.exception("fetch_tab_titles failed")
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 @tool("get_tab_titles")
