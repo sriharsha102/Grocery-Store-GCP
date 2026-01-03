@@ -15,6 +15,7 @@ from backend.integrations.google_sheets.sheets_dal import (
     get_menu,
     get_top_selling_items,
     decrement_quantities,
+    get_tab_titles,
 )
 # We no longer import send_receipt / send_low_stock_alert because
 # we're moving email sending fully to Apps Script.
@@ -32,6 +33,8 @@ EMAIL_MODE = os.getenv("EMAIL_MODE", "APPS_SCRIPT").upper()
 APPS_SCRIPT_EMAIL_URL = os.getenv("APPS_SCRIPT_EMAIL_URL", "")
 EMAIL_WEBHOOK_SECRET = os.getenv("EMAIL_WEBHOOK_SECRET", "")
 REQUEST_TIMEOUT = int(os.getenv("EXTERNAL_REQUEST_TIMEOUT", "30"))
+TAB_ALLOWLIST = [t.strip() for t in os.getenv("SHEETS_TAB_ALLOWLIST", "").split(",") if t.strip()]
+TAB_DENYLIST = [t.strip() for t in os.getenv("SHEETS_TAB_DENYLIST", "").split(",") if t.strip()]
 
 # Validate critical configuration at module load
 if EMAIL_MODE == "APPS_SCRIPT":
@@ -86,6 +89,22 @@ def menu():
         return {"items": get_menu()}
     except Exception as e:
         log.exception("menu failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/categories")
+def categories():
+    """
+    Return the list of tab titles from the Google Sheet, optionally filtered via allowlist/denylist.
+    """
+    try:
+        titles = get_tab_titles(
+            allowlist=TAB_ALLOWLIST or None,
+            denylist=TAB_DENYLIST or None,
+        )
+        return {"categories": titles}
+    except Exception as e:
+        log.exception("categories failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
