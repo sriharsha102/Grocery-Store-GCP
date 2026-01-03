@@ -273,3 +273,37 @@ def decrement_quantities(order_items: List[Tuple[str, int]]) -> Dict:
         "updated": result,
         "out_of_stock": []
     }
+
+
+def get_tab_titles(allowlist: List[str] | None = None, denylist: List[str] | None = None) -> List[str]:
+    """
+    Return the titles of every sheet tab for the configured spreadsheet.
+
+    Optionally filter via allowlist/denylist. Comparisons are case-insensitive.
+    """
+    svc = _svc()
+    sheet_id = _sheet_id()
+
+    resp = (
+        svc.get(
+            spreadsheetId=sheet_id,
+            fields="sheets.properties.title",
+        ).execute()
+    )
+
+    sheets = resp.get("sheets", []) or []
+    titles = [
+        s.get("properties", {}).get("title")
+        for s in sheets
+        if s.get("properties", {}).get("title")
+    ]
+
+    if allowlist:
+        allowed = {t.lower() for t in allowlist}
+        titles = [t for t in titles if t.lower() in allowed]
+
+    if denylist:
+        denied = {t.lower() for t in denylist}
+        titles = [t for t in titles if t.lower() not in denied]
+
+    return titles
