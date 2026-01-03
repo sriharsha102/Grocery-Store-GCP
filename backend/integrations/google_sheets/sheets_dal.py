@@ -100,7 +100,7 @@ def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
     price_idx = header.index("price") if "price" in header else None
     qty_idx   = header.index("quantity") if "quantity" in header else None
     #oc_idx    = header.index("orders_count") if "orders_count" in header else None
-    top_selling_idx    = header.index("Top_Selling_Items") if "Top_Selling_Items" in header else None
+    top_selling_idx    = header.index("top_selling_items") if "top_selling_items" in header else None
 
     for r in rows:
         # pad in case row shorter than header
