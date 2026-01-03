@@ -11,28 +11,26 @@ def fetch_tab_titles() -> dict:
     """
     Calls the backend categories endpoint and returns {"categories": [...]}
     """
-    base = os.getenv("API_BASE", BASE)
-    try:
-        r = requests.get(f"{base}/api/inventory/categories", timeout=8)
-        if r.status_code == 200:
-            return r.json()
-        err_text = r.text
-    except requests.exceptions.ConnectionError:
-        err_text = None
-    except Exception as e:
-        return {"error": f"{type(e).__name__}: {e}"}
+    primary_base = os.getenv("API_BASE", BASE)
+    bases_to_try = [primary_base]
+    if FALLBACK_BASE not in bases_to_try:
+        bases_to_try.append(FALLBACK_BASE)
 
-    # Fallback attempt: if API_BASE not set and primary failed to connect, try 8000
-    if os.getenv("API_BASE") is None or os.getenv("API_BASE") == "":
+    last_error = None
+    for base_url in bases_to_try:
         try:
-            r2 = requests.get(f"{FALLBACK_BASE}/api/inventory/categories", timeout=8)
-            if r2.status_code == 200:
-                return r2.json()
-            return {"error": r2.text}
+            r = requests.get(f"{base_url}/api/inventory/categories", timeout=8)
+            if r.status_code == 200:
+                return r.json()
+            last_error = r.text
+        except requests.exceptions.ConnectionError as ce:
+            last_error = f"ConnectionError to {base_url}: {ce}"
+            continue
         except Exception as e:
-            return {"error": f"{type(e).__name__}: {e}"}
+            last_error = f"{type(e).__name__}: {e}"
+            break
 
-    return {"error": err_text or "Unknown error contacting backend"}
+    return {"error": last_error or "Unknown error contacting backend"}
 
 
 @tool("get_tab_titles")
