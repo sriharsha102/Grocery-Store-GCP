@@ -1,15 +1,15 @@
 import os
 import logging
 import sys
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from langchain_core.tools import tool
 from langchain_core.pydantic_v1 import BaseModel, Field
-from backend.state.session import get_websocket, set_stripe_order_id
+from backend.state.session import get_websocket, set_stripe_order_id, set_item_tab_mapping
 
 import stripe
 
-# NEW: instead of HTTP requests.get(...), we import the sheet DAL directly
-from backend.integrations.google_sheets.sheets_dal import get_menu
+# Import sheet DAL functions
+from backend.integrations.google_sheets.sheets_dal import get_menu, get_tab_titles
 
 log = logging.getLogger(__name__)
 logging.basicConfig(
@@ -31,20 +31,49 @@ class TriggerPaymentArgs(BaseModel):
     session_id: str = Field(..., description="Session ID for this user/chat.")
 
 
-def _fetch_menu_direct() -> List[Dict[str, Any]]:
+def _fetch_menu_direct() -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
-    Directly call the Sheets DAL instead of hitting our own HTTP endpoint.
-    This avoids the 127.0.0.1 timeout / re-entrancy problem.
-    get_menu() already returns a list like:
-    [
-      { "name": "Madras Coffee", "price": 20.0, "quantity": 6, ... },
-      ...
-    ]
+    Fetch menu from ALL tabs and return combined items with tab mapping.
+
+    Returns:
+        Tuple of (all_items, item_to_tab_mapping)
+        - all_items: List of all items from all tabs
+        - item_to_tab_mapping: Dict mapping item_name_lowercase -> tab_name
     """
-    items = get_menu()
-    # routers.inventory.menu() wraps this as {"items": get_menu()}
-    # We just want that list.
-    return items
+    try:
+        # Get all tab titles
+        tab_titles = get_tab_titles()
+        log.info(f"Found {len(tab_titles)} tabs: {tab_titles}")
+    except Exception as e:
+        log.warning(f"Failed to get tab titles, falling back to default tab: {e}")
+        # Fallback to default "Inventory" tab if get_tab_titles fails
+        items = get_menu()
+        item_to_tab = {item["name"].strip().lower(): "Inventory" for item in items}
+        return items, item_to_tab
+
+    all_items = []
+    item_to_tab_mapping = {}
+
+    # Fetch from each tab
+    for tab_name in tab_titles:
+        try:
+            tab_items = get_menu(tab=tab_name)
+            log.info(f"Fetched {len(tab_items)} items from tab '{tab_name}'")
+
+            # Add items and track which tab they came from
+            for item in tab_items:
+                item_key = item["name"].strip().lower()
+                # If item exists in multiple tabs, the last one wins
+                # (you could add logic here to handle duplicates differently)
+                item_to_tab_mapping[item_key] = tab_name
+                all_items.append(item)
+
+        except Exception as e:
+            log.warning(f"Failed to fetch from tab '{tab_name}': {e}")
+            continue
+
+    log.info(f"Total items fetched from all tabs: {len(all_items)}")
+    return all_items, item_to_tab_mapping
 
 
 def _validate_cart_against_sheet(
@@ -119,9 +148,11 @@ async def trigger_payment(cart_items: List[CartItem], session_id: str):
             "message": "No active WebSocket for this session. Cannot initialize payment UI.",
         }
 
-    # 1. get fresh menu directly from Sheets (no HTTP call)
+    # 1. get fresh menu directly from Sheets (from ALL tabs)
     try:
-        menu_items = _fetch_menu_direct()
+        menu_items, item_tab_mapping = _fetch_menu_direct()
+        # Store the item-to-tab mapping for later use in finalize_stock
+        set_item_tab_mapping(session_id, item_tab_mapping)
     except Exception as e:
         log.exception("Failed to read menu from Sheets before checkout.")
         return {

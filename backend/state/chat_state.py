@@ -7,6 +7,7 @@ class ChatState:
         self.cart = {}
         self.websocket = None
         self.stripe_order_id = None
+        self.item_tab_mapping = {}  # Maps item_name -> tab_name for multi-tab inventory
 
     def reset(self):
         self.customer_id = None
@@ -14,6 +15,7 @@ class ChatState:
         self.cart = {}
         self.websocket = None
         self.stripe_order_id = None
+        self.item_tab_mapping = {}
 
     def to_dict(self):
         return {
@@ -22,6 +24,7 @@ class ChatState:
             "cart": self.cart,
             "websocket": self.websocket,
             "stripe_order_id": self.stripe_order_id,
+            "item_tab_mapping": self.item_tab_mapping,
         }
 
     @classmethod
@@ -32,4 +35,5 @@ class ChatState:
         instance.cart = data.get("cart")
         instance.websocket = data.get("websocket")
         instance.stripe_order_id = data.get("stripe_order_id")
+        instance.item_tab_mapping = data.get("item_tab_mapping", {})
         return instance

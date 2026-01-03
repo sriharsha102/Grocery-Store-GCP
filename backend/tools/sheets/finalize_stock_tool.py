@@ -1,12 +1,14 @@
 from pydantic.v1 import BaseModel, Field
-from typing import List
+from typing import List, Dict
 from langchain_core.tools import tool
 import logging
 import os
 import time
 import requests
 import uuid
+from collections import defaultdict
 from backend.integrations.google_sheets.sheets_dal import decrement_quantities
+from backend.state.session import get_item_tab_mapping
 
 log = logging.getLogger(__name__)
 
@@ -30,23 +32,66 @@ def finalize_stock(session_id: str, items: List[OrderItem]) -> dict:
     """
     Step 1: Run immediately after Stripe confirms 'paid'.
     Decrements stock, updates order count, and triggers low-stock alerts.
-    Calls Google Sheets directly instead of making HTTP requests.
+    Supports multi-tab inventory by grouping items by tab and decrementing separately.
     """
     if not items:
         return {"error": "No items provided"}
 
-    try:
-        # Decrement stock in Google Sheets
-        result = decrement_quantities([(i.name, i.qty) for i in items], tab=None)
-    except Exception as e:
-        log.exception("finalize_stock: decrement_quantities failed")
-        return {"error": f"Sheet update failed: {e}"}
+    # Get the item-to-tab mapping from session state
+    item_tab_mapping = get_item_tab_mapping(session_id)
+    log.info(f"Item-to-tab mapping for session {session_id}: {item_tab_mapping}")
+
+    # Group items by tab
+    items_by_tab: Dict[str, List[tuple]] = defaultdict(list)
+    unknown_tab_items = []
+
+    for item in items:
+        item_key = item.name.strip().lower()
+        tab_name = item_tab_mapping.get(item_key)
+
+        if tab_name:
+            items_by_tab[tab_name].append((item.name, item.qty))
+        else:
+            # If no mapping found, try default "Inventory" tab as fallback
+            log.warning(f"No tab mapping found for item '{item.name}', using default 'Inventory' tab")
+            unknown_tab_items.append((item.name, item.qty))
+
+    # Add unknown items to default "Inventory" tab
+    if unknown_tab_items:
+        items_by_tab["Inventory"].extend(unknown_tab_items)
+
+    log.info(f"Grouped items by tab: {dict(items_by_tab)}")
+
+    # Decrement quantities for each tab
+    all_updated = []
+    all_out_of_stock = []
+
+    for tab_name, tab_items in items_by_tab.items():
+        try:
+            log.info(f"Decrementing {len(tab_items)} items from tab '{tab_name}'")
+            result = decrement_quantities(tab_items, tab=tab_name)
+
+            # Collect results
+            if result.get("updated"):
+                all_updated.extend(result["updated"])
+
+            if result.get("out_of_stock"):
+                all_out_of_stock.extend(result["out_of_stock"])
+
+        except Exception as e:
+            log.exception(f"finalize_stock: decrement_quantities failed for tab '{tab_name}'")
+            # Mark all items from this tab as failed
+            for item_name, _ in tab_items:
+                all_out_of_stock.append({
+                    "name": item_name,
+                    "reason": f"Sheet update failed for tab '{tab_name}': {e}"
+                })
 
     # Handle out-of-stock race condition
-    if result.get("out_of_stock"):
+    if all_out_of_stock:
         return {
             "error": "Some items unavailable after payment",
-            "details": result["out_of_stock"]
+            "details": all_out_of_stock
         }
 
     order_id = f"ORD-{int(time.time())}"
@@ -55,8 +100,7 @@ def finalize_stock(session_id: str, items: List[OrderItem]) -> dict:
     low_stock_sent = False
     low_debug = {}
     if EMAIL_MODE == "APPS_SCRIPT" and APPS_SCRIPT_EMAIL_URL and EMAIL_WEBHOOK_SECRET:
-        updated_list = result.get("updated", []) or []
-        low_items = [u for u in updated_list if u.get("low_stock")]
+        low_items = [u for u in all_updated if u.get("low_stock")]
 
         if low_items and OWNER_EMAIL:
             low_payload = {
@@ -87,5 +131,5 @@ def finalize_stock(session_id: str, items: List[OrderItem]) -> dict:
         "status": "STOCK_UPDATED",
         "low_stock_sent": low_stock_sent,
         "low_debug": low_debug,
-        "updated": result.get("updated", []),
+        "updated": all_updated,
     }

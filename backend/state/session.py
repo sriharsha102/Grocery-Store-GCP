@@ -91,9 +91,28 @@ def get_websocket(session_id:str):
 
 def set_stripe_order_id(session_id: str, stripe_order_id: str):
     s = get_state(session_id)
-    s.stripe_order_id = stripe_order_id 
+    s.stripe_order_id = stripe_order_id
     save_state(session_id, s)
 
 def get_stripe_order_id(session_id:str):
     return get_state(session_id).stripe_order_id
+
+
+### Item-to-Tab Mapping (for multi-tab inventory) ###
+
+def set_item_tab_mapping(session_id: str, mapping: Dict[str, str]):
+    """
+    Store which tab each item belongs to.
+    mapping: {item_name_lowercase: tab_name}
+    """
+    s = get_state(session_id)
+    s.item_tab_mapping = mapping
+    save_state(session_id, s)
+
+def get_item_tab_mapping(session_id: str) -> Dict[str, str]:
+    """
+    Retrieve the item-to-tab mapping for this session.
+    Returns: {item_name_lowercase: tab_name}
+    """
+    return get_state(session_id).item_tab_mapping
 
