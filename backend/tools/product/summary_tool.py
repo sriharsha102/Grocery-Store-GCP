@@ -1,26 +1,61 @@
 # tools/product/summary_tool.py
 from langchain_core.tools import tool
 import re
-from backend.tools.product.products_tool import fetch_menu  # <-- import the helper, NOT the tool
+import logging
+from backend.integrations.google_sheets.sheets_dal import get_menu, get_tab_titles
+
+log = logging.getLogger(__name__)
 
 def _menu_dict() -> dict[str, float]:
-    data = fetch_menu()
-    items = data.get("items", []) if isinstance(data, dict) else []
+    """
+    Fetch menu from ALL tabs and return a combined price dictionary.
+    Returns: {item_name_lowercase: price}
+    """
+    try:
+        # Get all tab titles
+        tab_titles = get_tab_titles()
+        log.info(f"generate_summary: Found {len(tab_titles)} tabs: {tab_titles}")
+    except Exception as e:
+        log.warning(f"generate_summary: Failed to get tab titles, falling back to default tab: {e}")
+        # Fallback to default tab
+        data = get_menu()
+        items = data if isinstance(data, list) else []
+        menu = {}
+        for it in items:
+            name = str(it.get("name", "")).strip()
+            if name:
+                menu[name.lower()] = _parse_price(it.get("price", 0))
+        return menu
+
+    # Fetch from all tabs
     menu = {}
-    for it in items:
-        name = str(it.get("name", "")).strip()
-        # price may be str/float/int in Sheets -> normalize to float
-        raw_price = it.get("price", 0)
+    for tab_name in tab_titles:
         try:
-            price = float(raw_price)
-        except Exception:
-            try:
-                price = float(str(raw_price).strip().replace("$", ""))
-            except Exception:
-                price = 0.0
-        if name:
-            menu[name.lower()] = price
+            tab_items = get_menu(tab=tab_name)
+            log.info(f"generate_summary: Fetched {len(tab_items)} items from tab '{tab_name}'")
+
+            for it in tab_items:
+                name = str(it.get("name", "")).strip()
+                if name:
+                    # If item exists in multiple tabs, last tab wins
+                    menu[name.lower()] = _parse_price(it.get("price", 0))
+
+        except Exception as e:
+            log.warning(f"generate_summary: Failed to fetch from tab '{tab_name}': {e}")
+            continue
+
+    log.info(f"generate_summary: Total unique items across all tabs: {len(menu)}")
     return menu
+
+def _parse_price(raw_price) -> float:
+    """Parse price from various formats (str/float/int)."""
+    try:
+        return float(raw_price)
+    except Exception:
+        try:
+            return float(str(raw_price).strip().replace("$", ""))
+        except Exception:
+            return 0.0
 
 @tool("generate_summary")
 def generate_summary(order_text: str) -> str:
