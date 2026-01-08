@@ -2,6 +2,7 @@ from collections import defaultdict
 from langchain_core.tools import tool
 import logging
 from typing import Dict
+from backend.integrations.google_sheets.sheets_dal import get_menu, get_tab_titles
 
 # This dictionary will store cart objects, with session IDs as keys.
 # Structure: { "session_id_1": {"item_1": qty, "item_2": qty}, "session_id_2": ... }
@@ -11,6 +12,30 @@ from typing import Dict
 log = logging.getLogger(__name__)
 
 session_carts: Dict[str, defaultdict] = {}
+
+def _build_weight_lookup() -> Dict[str, str]:
+    try:
+        tab_titles = get_tab_titles()
+    except Exception:
+        tab_titles = []
+
+    if not tab_titles:
+        tab_titles = [None]
+
+    weight_lookup: Dict[str, str] = {}
+    for tab_name in tab_titles:
+        try:
+            items = get_menu(tab=tab_name) if tab_name else get_menu()
+        except Exception:
+            continue
+        for item in items:
+            name = str(item.get("name", "")).strip().lower()
+            if not name:
+                continue
+            weight = str(item.get("weight", "")).strip()
+            if weight:
+                weight_lookup[name] = weight
+    return weight_lookup
 
 def get_cart_for_session(session_id: str) -> defaultdict:
     """Retrieves or creates a cart object for a given session ID."""
@@ -79,7 +104,14 @@ def view_cart(session_id: str) -> str:
         log.info(f"--- TOOL CALL: view_cart --- Cart: Empty")
         return "The cart is currently empty."
 
-    cart_items = [f"{qty} x {item}" for item, qty in cart.items()]
+    weight_lookup = _build_weight_lookup()
+    cart_items = []
+    for item, qty in cart.items():
+        weight = weight_lookup.get(item, "")
+        if weight:
+            cart_items.append(f"{qty} x {item} ({weight})")
+        else:
+            cart_items.append(f"{qty} x {item}")
     cart_summary = ", ".join(cart_items)
     log.info(f"--- TOOL CALL: view_cart --- Cart: {cart_summary}")
     return f"The cart contains: {cart_summary}."

@@ -359,10 +359,10 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
     "- Say hello and ask how you can help.\n"
     "- If the user asks for the popular items, or top sellers, call get_top_sellers.\n"
     "- Filter the results so that you only include all rows where top_selling_items is 'Y' (case-insensitive).\n"
-    "- Display only those filtered items to the user, listing their names and prices clearly.\n"
-    "- If the user asks for the full menu, call `get_products` and list the items with names and prices.\n"
+    "- Display only those filtered items to the user, listing their names, prices, and weights when provided.\n"
+    "- If the user asks for the full menu, call `get_products` and list the items with names, prices, and weights when provided.\n"
     "- If they mention a specific item, call `get_products` to validate that item (case-insensitive) "
-    "and get the correct price/stock.\n\n"
+    "and get the correct price/stock/weight.\n\n"
 
     "2) Cart Management:\n"
     "- Before adding anything to the cart, confirm the item exists and is in stock using `get_products`.\n"

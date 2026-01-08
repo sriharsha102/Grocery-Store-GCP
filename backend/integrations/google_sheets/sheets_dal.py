@@ -51,13 +51,13 @@ def _col_letter(col_idx_zero_based: int) -> str:
 
 def _read_all(tab: str | None = None) -> tuple[list[str], list[list[str]]]:
     """
-    Reads header and all rows for columns A..E (name, price, quantity, date, orders_count).
+    Reads header and all rows for columns A..G (name, price, weight, quantity, date, orders_count).
     """
     svc = _svc()
     sheet_id = _sheet_id()
     tab = tab or _tab()
 
-    # IMPORTANT: include column E so orders_count is present
+    # IMPORTANT: include column G so orders_count/top_selling_items are present
     hdr = (
         svc.values()
         .get(spreadsheetId=sheet_id, range=f"{tab}!A1:G1")
@@ -80,6 +80,7 @@ def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
     Output keys:
       - name (str)
       - price (float)
+      - weight (str)
       - quantity (int)
       - date (str, untouched)
       - orders_count (int)
@@ -98,6 +99,7 @@ def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
     except ValueError:
         name_idx = 0
     price_idx = header.index("price") if "price" in header else None
+    weight_idx = header.index("weight") if "weight" in header else None
     qty_idx   = header.index("quantity") if "quantity" in header else None
     #oc_idx    = header.index("orders_count") if "orders_count" in header else None
     top_selling_idx    = header.index("top_selling_items") if "top_selling_items" in header else None
@@ -112,6 +114,10 @@ def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
         # price -> float
         if price_idx is not None:
             rec["price"] = _to_float(rec.get("price"))
+
+        # weight -> str (optional)
+        if weight_idx is not None:
+            rec["weight"] = str(rec.get("weight", "")).strip()
 
         # quantity -> int
         if qty_idx is not None:
@@ -143,7 +149,7 @@ def get_top_selling_items(tab: str | None = None) -> List[Dict]:
     Returns top selling items from top_selling_items column.
     """
     items = _rows_as_dicts(tab=tab)
-    selected_cols = ["name", "price", "quantity", "top_selling_items"]
+    selected_cols = ["name", "price", "weight", "quantity", "top_selling_items"]
     
     selected_cols = [c.lower() for c in selected_cols]
     filtered_items = [
