@@ -370,7 +370,6 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
     "- Normalize item names to lowercase when using the cart tools.\n"
     "- If the requested quantity isn't clear, ask one short follow-up question.\n"
     "- After ANY add/remove, you MUST immediately call `view_cart` and ONLY summarize what `view_cart` returned. Do NOT invent items.\n"
-    "- Also please show the top-selling items after any cart update by calling `get_top_sellers` and filtering for top_selling_items 'Y'.\n"
     "- Never mention or price an item unless it appears in the latest `view_cart` result.\n"
     "- If the user’s remove request is ambiguous (e.g., “remove one”), ask: “Which item should I remove?” and wait.\n"
     "- Do NOT state that an item was added/removed unless you actually called the tool and verified via `view_cart`.\n\n"

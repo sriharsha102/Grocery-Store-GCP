@@ -95,7 +95,14 @@ const Index = () => {
         const timer = setTimeout(() => {
             const initialMessage: Message = {
                 id: Date.now().toString(),
-                text: "Welcome to Bharat Bazar! 🛍️ - I'm your smart shopping assistant.\nYou can ask me about our top-selling items, browse our full menu, add things to your cart 🛒, and check out whenever you're ready!",
+                text:
+                "Welcome to Bharat Bazar! 🛍️ - I’m your smart shopping assistant. \n\n" +
+                "What are you shopping today? I can help you find it 😊\n\n" +
+                "🥬 Veggies\n\n" +
+                "🌾 Rice & Wheat\n\n" +
+                "🍜 Pulses / Daliya / Poha / Noodles\n\n" +
+                "🌶️ Spices\n\n" +
+                "🍿 Snacks",
                 sender: 'assistant',
                 timestamp: new Date()
             };
