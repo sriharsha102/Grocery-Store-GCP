@@ -1,8 +1,12 @@
 from collections import defaultdict
 from langchain_core.tools import tool
 import logging
+import time
 from typing import Dict
-from backend.integrations.google_sheets.sheets_dal import get_menu, get_tab_titles
+from backend.integrations.google_sheets.sheets_dal import get_menu, get_menu_for_tabs, get_tab_titles
+from backend.state.session import get_active_tabs, get_weight_cache, is_awaiting_email, set_weight_cache
+
+WEIGHT_CACHE_TTL_SECONDS = 300
 
 # This dictionary will store cart objects, with session IDs as keys.
 # Structure: { "session_id_1": {"item_1": qty, "item_2": qty}, "session_id_2": ... }
@@ -13,29 +17,49 @@ log = logging.getLogger(__name__)
 
 session_carts: Dict[str, defaultdict] = {}
 
-def _build_weight_lookup() -> Dict[str, str]:
-    try:
-        tab_titles = get_tab_titles()
-    except Exception:
-        tab_titles = []
+def _guard_if_awaiting_email(session_id: str) -> str | None:
+    if is_awaiting_email(session_id):
+        return "Payment is confirmed. Please provide your email address to receive the receipt."
+    return None
 
-    if not tab_titles:
-        tab_titles = [None]
+def _build_weight_lookup(session_id: str) -> Dict[str, str]:
+    active_tabs = get_active_tabs(session_id)
+    if not active_tabs:
+        try:
+            active_tabs = get_tab_titles()
+        except Exception:
+            active_tabs = []
 
     weight_lookup: Dict[str, str] = {}
-    for tab_name in tab_titles:
+    if active_tabs:
         try:
-            items = get_menu(tab=tab_name) if tab_name else get_menu()
+            tab_results = get_menu_for_tabs(active_tabs)
+            for items in tab_results.values():
+                for item in items:
+                    name = str(item.get("name", "")).strip().lower()
+                    if not name:
+                        continue
+                    weight = str(item.get("weight", "")).strip()
+                    if weight:
+                        weight_lookup[name] = weight
+            return weight_lookup
         except Exception:
+            weight_lookup = {}
+
+    try:
+        items = get_menu()
+    except Exception:
+        return {}
+
+    for item in items:
+        name = str(item.get("name", "")).strip().lower()
+        if not name:
             continue
-        for item in items:
-            name = str(item.get("name", "")).strip().lower()
-            if not name:
-                continue
-            weight = str(item.get("weight", "")).strip()
-            if weight:
-                weight_lookup[name] = weight
+        weight = str(item.get("weight", "")).strip()
+        if weight:
+            weight_lookup[name] = weight
     return weight_lookup
+
 
 def get_cart_for_session(session_id: str) -> defaultdict:
     """Retrieves or creates a cart object for a given session ID."""
@@ -54,6 +78,9 @@ def add_to_cart(session_id: str, item_name: str, quantity: int) -> str:
     """
     Adds a specified quantity of an item to the shopping cart.
     """
+    blocked = _guard_if_awaiting_email(session_id)
+    if blocked:
+        return blocked
     if quantity <= 0:
         return "Quantity must be a positive integer to add to cart."
     
@@ -71,6 +98,9 @@ def remove_from_cart(session_id: str, item_name: str, quantity: int) -> str:
     """
     Removes a specified quantity of an item from the shopping cart.
     """
+    blocked = _guard_if_awaiting_email(session_id)
+    if blocked:
+        return blocked
     if quantity <= 0:
         return "Quantity must be a positive integer to remove from cart."
     
@@ -98,13 +128,21 @@ def view_cart(session_id: str) -> str:
     """
     Displays the current contents of the shopping cart.
     """
+    blocked = _guard_if_awaiting_email(session_id)
+    if blocked:
+        return blocked
     cart = get_cart_for_session(session_id)
     
     if not cart:
         log.info(f"--- TOOL CALL: view_cart --- Cart: Empty")
         return "The cart is currently empty."
 
-    weight_lookup = _build_weight_lookup()
+    cached_weights, cached_ts = get_weight_cache(session_id)
+    if cached_weights and (time.time() - cached_ts) < WEIGHT_CACHE_TTL_SECONDS:
+        weight_lookup = cached_weights
+    else:
+        weight_lookup = _build_weight_lookup(session_id)
+        set_weight_cache(session_id, weight_lookup)
     cart_items = []
     for item, qty in cart.items():
         weight = weight_lookup.get(item, "")
@@ -121,6 +159,9 @@ def clear_cart(session_id: str) -> str:
     """
     Empties the shopping cart.
     """
+    blocked = _guard_if_awaiting_email(session_id)
+    if blocked:
+        return blocked
     cart = get_cart_for_session(session_id)
     
     cart.clear()

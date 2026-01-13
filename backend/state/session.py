@@ -2,6 +2,7 @@ from typing import Dict
 from fastapi import WebSocket
 from backend.state.chat_state import ChatState
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -116,3 +117,39 @@ def get_item_tab_mapping(session_id: str) -> Dict[str, str]:
     """
     return get_state(session_id).item_tab_mapping
 
+### Active Tabs ###
+
+def add_active_tab(session_id: str, tab_name: str | None) -> None:
+    if not tab_name:
+        return
+    s = get_state(session_id)
+    normalized = tab_name.strip()
+    if normalized and normalized not in s.active_tabs:
+        s.active_tabs.append(normalized)
+        save_state(session_id, s)
+
+def get_active_tabs(session_id: str) -> list[str]:
+    return get_state(session_id).active_tabs
+
+
+### Weight Cache ###
+
+def get_weight_cache(session_id: str) -> tuple[Dict[str, str], float]:
+    s = get_state(session_id)
+    return s.weight_cache, float(s.weight_cache_ts or 0.0)
+
+def set_weight_cache(session_id: str, cache: Dict[str, str]) -> None:
+    s = get_state(session_id)
+    s.weight_cache = cache
+    s.weight_cache_ts = time.time()
+    save_state(session_id, s)
+
+### Awaiting Email ###
+
+def set_awaiting_email(session_id: str, awaiting: bool) -> None:
+    s = get_state(session_id)
+    s.awaiting_email = awaiting
+    save_state(session_id, s)
+
+def is_awaiting_email(session_id: str) -> bool:
+    return bool(get_state(session_id).awaiting_email)

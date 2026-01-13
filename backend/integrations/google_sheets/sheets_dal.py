@@ -72,10 +72,11 @@ def _read_all(tab: str | None = None) -> tuple[list[str], list[list[str]]]:
     )
     return hdr, rows
 
-def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
+def _rows_as_dicts_from_values(header: list[str], rows: list[list[str]]) -> List[Dict[str, Any]]:
     """
     Read all rows from the Inventory sheet, map header -> value,
     and normalize some known columns so downstream code can trust the shape.
+    Map header -> value and normalize some known columns so downstream code can trust the shape.
 
     Output keys:
       - name (str)
@@ -90,8 +91,7 @@ def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
     We still include ANY other columns in the sheet automatically too,
     because we start from the raw header dict.
     """
-    hdr, rows = _read_all(tab=tab)
-    header = [h.strip().lower() for h in hdr]
+    header = [h.strip().lower() for h in header]
     out: List[Dict[str, Any]] = []
     # Find column indices by header (case-insensitive)
     try:
@@ -133,6 +133,14 @@ def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
 
     return out
 
+def _rows_as_dicts(tab: str | None = None) -> List[Dict[str, Any]]:
+    """
+    Read all rows from the Inventory sheet, map header -> value,
+    and normalize some known columns so downstream code can trust the shape.
+    """
+    hdr, rows = _read_all(tab=tab)
+    return _rows_as_dicts_from_values(hdr, rows)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Public DAL
@@ -144,11 +152,42 @@ def get_menu(tab: str | None = None) -> List[Dict]:
     """
     return _rows_as_dicts(tab=tab)
 
+def get_menu_for_tabs(tabs: List[str]) -> Dict[str, List[Dict]]:
+    """
+    Batch fetch menu rows for multiple tabs.
+    Returns: {tab_name: [row_dicts]}
+    """
+    if not tabs:
+        return {}
+
+    svc = _svc()
+    sheet_id = _sheet_id()
+    ranges = [f"{tab}!A1:G" for tab in tabs]
+    resp = svc.values().batchGet(
+        spreadsheetId=sheet_id,
+        ranges=ranges,
+    ).execute()
+
+    results: Dict[str, List[Dict]] = {}
+    for value_range in resp.get("valueRanges", []):
+        range_name = value_range.get("range", "")
+        tab_name = range_name.split("!", 1)[0] if "!" in range_name else range_name
+        values = value_range.get("values", [])
+        if not values:
+            results[tab_name] = []
+            continue
+        header = values[0]
+        rows = values[1:] if len(values) > 1 else []
+        results[tab_name] = _rows_as_dicts_from_values(header, rows)
+
+    return results
+
 def get_top_selling_items(tab: str | None = None) -> List[Dict]:
     """
     Returns top selling items from top_selling_items column.
     """
     items = _rows_as_dicts(tab=tab)
+    selected_cols = ["name", "price", "weight", "quantity", "top_selling_items"]
     selected_cols = ["name", "price", "weight", "quantity", "top_selling_items"]
     
     selected_cols = [c.lower() for c in selected_cols]

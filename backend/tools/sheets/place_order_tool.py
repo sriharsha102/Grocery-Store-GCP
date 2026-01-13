@@ -5,9 +5,10 @@ import logging
 import time
 import requests
 from typing import List
-from pydantic.v1 import BaseModel, Field, EmailStr
+from pydantic.v1 import BaseModel, Field
 from langchain.tools import tool
 from backend.tools.cart.cart_tool import clear_cart
+from backend.state.session import set_awaiting_email
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class PlaceOrderArgs(BaseModel):
         ...,
         description="The active chat session id. Used to clear the correct cart after a PAID order."
     )
-    customer_email: EmailStr = Field(
+    customer_email: str = Field(
         ...,
         description="Customer email where the receipt should be sent."
     )
@@ -54,12 +55,19 @@ def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> 
     Calls backend functions directly instead of making HTTP requests.
     """
 
-    # Hard gate: do not proceed without an email
+    # Hard gate: do not proceed without a valid email
     if not (customer_email and customer_email.strip()):
         return {
             "error": "missing_customer_email",
             "message": "Customer email is required before finalizing the receipt."
         }
+    email_value = customer_email.strip()
+    if "@" not in email_value or "." not in email_value.split("@")[-1]:
+        return {
+            "error": "invalid_customer_email",
+            "message": "Customer email is required before finalizing the receipt."
+        }
+
 
     order_id = f"ORD-{int(time.time())}"
 
@@ -73,7 +81,7 @@ def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> 
             "type": "receipt",
             "order": {
                 "order_id": order_id,
-                "customer_email": customer_email,
+                "customer_email": email_value,
                 "items": [{"name": i.name, "qty": i.qty} for i in items],
             },
             "owner_email": OWNER_EMAIL,
@@ -103,6 +111,7 @@ def place_order(session_id: str, customer_email: str, items: List[LineItem]) -> 
     try:
         clear_cart(session_id)
         cart_cleared = True
+        set_awaiting_email(session_id, False)
     except Exception:
         log.exception("place_order: failed to clear cart for session %s", session_id)
 

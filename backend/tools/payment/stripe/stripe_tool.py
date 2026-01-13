@@ -2,7 +2,7 @@ import os
 import stripe
 from langchain_core.tools import tool
 from pydantic import BaseModel
-from backend.state.session import get_stripe_order_id
+from backend.state.session import get_stripe_order_id, set_awaiting_email
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
@@ -27,6 +27,8 @@ def stripe_checkout_status_tool(session_id: str) -> str:
     try:
         order_id = get_stripe_order_id(session_id)
         order = stripe.checkout.Session.retrieve(order_id)
+        if order.payment_status == "paid":
+            set_awaiting_email(session_id, True)
         return (
             # f"Checkout Session '{order.id}' status: \n"
             f"Payment Status: {order.payment_status}."
