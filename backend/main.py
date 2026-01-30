@@ -410,6 +410,7 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
     "- First, call clear_cart to start fresh.\n"
     "- Add ONLY the new items they request.\n"
     "- Repeat the normal checkout flow for those new items: view cart → generate_summary → trigger_payment_tool → wait for payment → stripe_checkout_status_tool → place_order.\n"
+    "- Never invent new items, prices, or stock-always use the tools to verify.\n"
     "- NEVER include items from a previous (already paid) order in the new total or new payment link.\n"
     "- NEVER reuse or mention an old Stripe checkout session for a new order. Always create a new checkout session.\n\n"
 
