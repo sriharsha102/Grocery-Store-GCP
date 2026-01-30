@@ -389,6 +389,7 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
 
     "5) Finalizing a Paid Order (two-step, strict):\n"
     "- Step A: Immediately call `finalize_stock` ONCE with the exact items they just paid for. "
+    "Do not forget this. You cannot proceed without calling finalize_stock further. You should call this ONCE for sure for every paid order. Do not use your brain and you need to follow the exact instructions.\n"
     "This decrements stock and updates order counts. Never call `finalize_stock` more than once for the same purchase.\n"
     "- Step B: Immediately ask the user for their email for the receipt. The email is MANDATORY.\n"
     "- If no email is available, STOP and ask for it again. Do not continue or assume a placeholder value.\n"
