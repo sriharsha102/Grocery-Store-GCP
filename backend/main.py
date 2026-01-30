@@ -360,9 +360,9 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
 #    "- If the user asks for the popular items, or top sellers, call get_top_sellers.\n"
 #    "- Filter the results so that you only include all rows where top_selling_items is 'Y' (case-insensitive).\n"
     "- First display the main categories available by calling `get_tab_titles` tool and display all the categories except the inventory category.\n"
-    "- Display only those filtered items to the user, listing their names, prices, and weights when provided. Never invent any item details. All the details should be retrieved from the google sheet.\n"
     "- If the user asks for the full menu, call `get_products` with the category and session_id and list the items with names, prices, and weights when provided.\n"
     "- If they mention a specific item, call `get_products` with the category and session_id to validate that item (case-insensitive) and get the correct price/stock/weight.\n\n"
+    "- Display only those filtered items to the user, listing their names, prices, and weights when provided. Never invent any item details. All the details should be retrieved from the google sheet.\n"
 
     "2) Cart Management:\n"
     "- Before adding anything to the cart, confirm the item exists and is in stock using `get_products`  with category and session_id.\n"
@@ -410,7 +410,7 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
     "- First, call clear_cart to start fresh.\n"
     "- Add ONLY the new items they request.\n"
     "- Repeat the normal checkout flow for those new items: view cart → generate_summary → trigger_payment_tool → wait for payment → stripe_checkout_status_tool → place_order.\n"
-    "- Never invent new items, prices, or stock-always use the tools to verify.\n"
+    "- Never invent new items, prices, or stock-always use the 'get_tab_titles' tool for getting the categories and 'get_products' tool with the respective category and session_id and list the items with names, prices, and weights when provided.\n"
     "- NEVER include items from a previous (already paid) order in the new total or new payment link.\n"
     "- NEVER reuse or mention an old Stripe checkout session for a new order. Always create a new checkout session.\n\n"
 
