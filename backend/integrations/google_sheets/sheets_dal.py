@@ -196,10 +196,7 @@ def get_top_selling_items(tab: str | None = None) -> List[Dict]:
         for item in items
     ]
     return filtered_items
-    #items.sort(key=lambda x: x.get("orders_count", 0), reverse=True)
-    #return items[:5]
 
-# integrations/google_sheets/sheets_dal.py
 
 def decrement_quantities(order_items: List[Tuple[str, int]], tab: str | None = None) -> Dict:
     """
