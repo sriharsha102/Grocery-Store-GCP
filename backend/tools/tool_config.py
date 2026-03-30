@@ -11,6 +11,7 @@ from backend.tools.product.summary_tool import generate_summary
 
 from backend.tools.payment.trigger_payment import trigger_payment_tool
 from backend.tools.payment.stripe.stripe_tool import stripe_checkout_status_tool
+from backend.tools.suggestions.suggest_item_tool import suggest_item_tool
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,8 @@ def get_all_tools() -> list[Tool]:
             tab_titles_tool,
             get_top_sellers,   # ← NEW (reads top 5 from Sheets)
             finalize_stock,
-            place_order       # ← NEW (decrement Sheet + send emails)
+            place_order,
+            suggest_item_tool,
         ]
     )
     logger.info(f"Successfully loaded {len(tools)} tools for the agent.")

@@ -163,7 +163,7 @@ async def trigger_payment(cart_items: List[CartItem], session_id: str):
         checkout_session = stripe.checkout.Session.create(
             line_items=line_items,
             mode="payment",
-            ui_mode="embedded",
+            ui_mode="embedded_page",
             billing_address_collection="required",
             redirect_on_completion="never",
             metadata={"chat_session_id": session_id},

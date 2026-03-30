@@ -1,11 +1,12 @@
 # tools/product/products_tool.py
 import os, requests
+from typing import Optional
 from langchain_core.tools import tool
 
 BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")
 FALLBACK_BASE = "http://localhost:8080"
 
-def fetch_menu(category: str | None = None) -> dict:
+def fetch_menu(category: Optional[str] = None) -> dict:
     """
     Plain helper. Returns {"items":[{"name":..., "price": ..., ...}, ...]} or {"error":...}
     """
@@ -37,7 +38,7 @@ def fetch_menu(category: str | None = None) -> dict:
     return {"error": last_error or "Unknown error contacting backend"}
 
 @tool("get_products")
-def get_products(category: str | None = None) -> dict:
+def get_products(category: Optional[str] = None) -> dict:
     """
     LangChain tool that returns the live menu (names + prices) from Google Sheets.
     """
