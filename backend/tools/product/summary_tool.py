@@ -4,6 +4,7 @@ import re
 import logging
 from backend.integrations.google_sheets.sheets_dal import get_menu, get_menu_for_tabs, get_tab_titles
 from backend.state.session import get_active_tabs
+from backend.tools.cart.cart_tool import get_cart_for_session
 
 log = logging.getLogger(__name__)
 
@@ -75,29 +76,38 @@ def _parse_price(raw_price) -> float:
 @tool("generate_summary")
 def generate_summary(order_text: str, session_id: str | None = None) -> str:
     """
-    Parse an order sentence and compute an itemized total using live prices from Sheets.
+    Compute an itemized total using live prices from Sheets.
+    order_text is ignored — cart is read from session state.
     """
     tabs = get_active_tabs(session_id) if session_id else []
     menu = _menu_dict(tabs=tabs)
     if not menu:
         return "Sorry, I couldn't load the menu right now."
 
+    # Read directly from the in-memory cart — don't parse order_text
+    cart = get_cart_for_session(session_id) if session_id else {}
+    if not cart:
+        return "The cart is empty — nothing to summarise."
+
     total = 0.0
     lines = []
+    missing = []
 
-    # match any menu item by exact name (case-insensitive), quantity optional (defaults to 1)
-    text = order_text.lower()
-    for item_name, price in menu.items():
-        # allow spaces/variations; quantity optional
-        pattern = rf"(?:(\d+)\s*)?{re.escape(item_name)}\b"
-        for qty_str in re.findall(pattern, text):
-            qty = int(qty_str) if qty_str else 1
-            subtotal = qty * price
-            total += subtotal
-            lines.append(f"{qty} {item_name.title()} - ${subtotal:.2f}")
+    for item_name, qty in cart.items():
+        key = item_name.strip().lower()
+        price = menu.get(key)
+        if price is None:
+            missing.append(item_name)
+            continue
+        subtotal = qty * price
+        total += subtotal
+        lines.append(f"{qty} x {item_name.title()} — ${subtotal:.2f}")
+
+    if missing:
+        log.warning("generate_summary: items in cart not found in menu: %s", missing)
 
     if not lines:
-        return "Sorry, I couldn't detect any valid items in your order."
+        return "Sorry, I couldn't match any cart items to the current menu."
 
     lines.append(f"\n**Estimated Total:** ${total:.2f}")
     return "\n".join(lines)

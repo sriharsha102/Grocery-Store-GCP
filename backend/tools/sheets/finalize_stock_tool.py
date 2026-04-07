@@ -27,6 +27,26 @@ class FinalizeStockArgs(BaseModel):
     session_id: str = Field(..., description="Chat session ID for this checkout")
     items: List[OrderItem] = Field(..., description="Paid items to decrement in stock")
 
+def _resolve_item_key(name: str, item_tab_mapping: dict) -> str:
+    """
+    Match a potentially truncated item name to its full key in item_tab_mapping.
+    e.g. 'lx cumin seed' → 'lx cumin seed 400gm'
+    """
+    key = name.strip().lower()
+    if key in item_tab_mapping:
+        return key
+    # starts-with: handles LLM stripping weight suffixes
+    for mapped_key in item_tab_mapping:
+        if mapped_key.startswith(key):
+            log.info("Resolved item '%s' → '%s'", key, mapped_key)
+            return mapped_key
+    # contains: last resort
+    for mapped_key in item_tab_mapping:
+        if key in mapped_key:
+            log.info("Resolved item '%s' → '%s' (contains match)", key, mapped_key)
+            return mapped_key
+    return key  # no match — will fall through to Inventory fallback
+
 @tool("finalize_stock", args_schema=FinalizeStockArgs)
 def finalize_stock(session_id: str, items: List[OrderItem]) -> dict:
     """
@@ -46,7 +66,7 @@ def finalize_stock(session_id: str, items: List[OrderItem]) -> dict:
     unknown_tab_items = []
 
     for item in items:
-        item_key = item.name.strip().lower()
+        item_key = _resolve_item_key(item.name, item_tab_mapping)
         tab_name = item_tab_mapping.get(item_key)
 
         if tab_name:

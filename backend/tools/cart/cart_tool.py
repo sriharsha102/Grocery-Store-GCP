@@ -157,15 +157,16 @@ def view_cart(session_id: str) -> str:
 @tool
 def clear_cart(session_id: str) -> str:
     """
-    Empties the shopping cart.
+    Empties the shopping cart. Always returns a success message.
+    Do NOT call view_cart before or after this tool in the finalization flow.
     """
     blocked = _guard_if_awaiting_email(session_id)
     if blocked:
         return blocked
     cart = get_cart_for_session(session_id)
-    
     cart.clear()
     log.info(f"--- TOOL CALL: clear_cart --- Cart: Cleared")
-    return "The cart has been cleared."
+    return "SUCCESS: Cart has been fully cleared. No items remain. Do not call view_cart or clear_cart again."
+
 
 cart_tools = [add_to_cart, remove_from_cart, view_cart, clear_cart]

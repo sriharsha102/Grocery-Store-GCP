@@ -20,7 +20,7 @@ def _sheet_id() -> str:
     return sid
 
 def _tab() -> str:
-    return os.getenv("INVENTORY_TAB", "Inventory")
+    return os.getenv("INVENTORY_TAB", "Rice & Wheat")
 
 def _svc():
     return get_sheets()
@@ -49,6 +49,16 @@ def _col_letter(col_idx_zero_based: int) -> str:
         s = chr(65 + r) + s
     return s
 
+def _quote_tab(tab: str) -> str:
+    """
+    Wrap tab name in single quotes for A1 notation when it contains
+    spaces, ampersands, or other special characters.
+    Escapes any literal single-quote inside the name.
+    """
+    if any(c in tab for c in (" ", "&", "-", "/", "'")):
+        return "'" + tab.replace("'", "''") + "'"
+    return tab
+
 def _read_all(tab: str | None = None) -> tuple[list[str], list[list[str]]]:
     """
     Reads header and all rows for columns A..G (name, price, weight, quantity, date, orders_count).
@@ -58,15 +68,16 @@ def _read_all(tab: str | None = None) -> tuple[list[str], list[list[str]]]:
     tab = tab or _tab()
 
     # IMPORTANT: include column G so orders_count/top_selling_items are present
+    qt = _quote_tab(tab)
     hdr = (
         svc.values()
-        .get(spreadsheetId=sheet_id, range=f"{tab}!A1:G1")
+        .get(spreadsheetId=sheet_id, range=f"{qt}!A1:G1")
         .execute()
         .get("values", [[]])[0]
     )
     rows = (
         svc.values()
-        .get(spreadsheetId=sheet_id, range=f"{tab}!A2:G")
+        .get(spreadsheetId=sheet_id, range=f"{qt}!A2:G")
         .execute()
         .get("values", [])
     )
@@ -152,6 +163,8 @@ def get_menu(tab: str | None = None) -> List[Dict]:
     """
     return _rows_as_dicts(tab=tab)
 
+
+
 def get_menu_for_tabs(tabs: List[str]) -> Dict[str, List[Dict]]:
     """
     Batch fetch menu rows for multiple tabs.
@@ -162,7 +175,7 @@ def get_menu_for_tabs(tabs: List[str]) -> Dict[str, List[Dict]]:
 
     svc = _svc()
     sheet_id = _sheet_id()
-    ranges = [f"{tab}!A1:G" for tab in tabs]
+    ranges = [f"{_quote_tab(tab)}!A1:G" for tab in tabs]
     resp = svc.values().batchGet(
         spreadsheetId=sheet_id,
         ranges=ranges,
@@ -172,6 +185,7 @@ def get_menu_for_tabs(tabs: List[str]) -> Dict[str, List[Dict]]:
     for value_range in resp.get("valueRanges", []):
         range_name = value_range.get("range", "")
         tab_name = range_name.split("!", 1)[0] if "!" in range_name else range_name
+        tab_name = tab_name.strip("'") 
         values = value_range.get("values", [])
         if not values:
             results[tab_name] = []
@@ -281,8 +295,9 @@ def decrement_quantities(order_items: List[Tuple[str, int]], tab: str | None = N
         # queue spreadsheet writes
         # quantity column
         qty_col_letter = chr(ord("A") + qty_idx)   # crude A/B/C... for up to Z
+        qt = _quote_tab(tab)
         updates.append({
-            "range": f"{tab}!{qty_col_letter}{rownum}",
+            "range": f"{qt}!{qty_col_letter}{rownum}",
             "values": [[new_qty]]
         })
 
@@ -290,7 +305,7 @@ def decrement_quantities(order_items: List[Tuple[str, int]], tab: str | None = N
         if oc_idx is not None:
             oc_col_letter = chr(ord("A") + oc_idx)
             updates.append({
-                "range": f"{tab}!{oc_col_letter}{rownum}",
+                "range": f"{qt}!{oc_col_letter}{rownum}",
                 "values": [[new_oc]]
             })
 
