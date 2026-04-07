@@ -1,5 +1,7 @@
 # tools/product/products_tool.py
 import logging
+import os, requests
+from typing import Optional
 from langchain_core.tools import tool
 from backend.integrations.google_sheets.sheets_dal import get_menu, get_tab_titles
 from backend.state.session import add_active_tab, get_item_tab_mapping, set_item_tab_mapping
@@ -38,7 +40,7 @@ def _resolve_category(category: str) -> str:
     return category
 
 
-def fetch_menu(category: str | None = None, session_id: str | None = None) -> dict:
+def fetch_menu(category: Optional[str] = None, session_id: str | None = None) -> dict:
     try:
         if category:
             category = _resolve_category(category)
@@ -51,7 +53,7 @@ def fetch_menu(category: str | None = None, session_id: str | None = None) -> di
         return {"error": f"{type(e).__name__}: {e}"}
 
 @tool("get_products")
-def get_products(category: str | None = None, session_id: str | None = None) -> dict:
+def get_products(category: Optional[str] = None, session_id: str | None = None) -> dict:
     """
     LangChain tool that returns the live menu (names + prices) from Google Sheets.
     Pass session_id to remember active category tabs.

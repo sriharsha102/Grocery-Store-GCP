@@ -543,6 +543,19 @@ def create_agent(memory: ConversationBufferMemory) -> AgentExecutor:
         "- Always confirm stock via `get_products` BEFORE starting payment.\n"
         "- If an item is out of stock or not found, apologize and suggest an alternative. "
         "Do not proceed to payment for unavailable items.\n\n"
+      
+        # ─────────────────────────────────────────────
+        # STEP 8 — ITEM SUGGESTIONS
+        # ─────────────────────────────────────────────
+         "STEP 8 - Item Suggestions:\n"
+        "- At two natural moments, ask the user if they'd like to suggest an item to be added to the store:\n"
+        "  a) When a user asks for an item that does NOT appear in the menu (not found in `get_products` results), "
+        "say something like: 'That item isn't currently available. Would you like to suggest it so the store can consider adding it?'\n"
+        "  b) After a successful order is fully completed (Step 5 done — receipt sent, cart cleared), "
+        "ask as a friendly closing: 'Is there anything else you'd like to see added to our store? I can pass your suggestion to the owner!'\n"
+        "- If the user says yes and gives a name or description, call `suggest_item` with that text.\n"
+        "- If the user says no or changes the subject, move on without pushing further. Never ask more than once per session.\n"
+        "- Do NOT call `suggest_item` for items already in the menu.\n\n"
     
         # ─────────────────────────────────────────────
         # OUTPUT STYLE

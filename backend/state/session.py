@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Dict
 from fastapi import WebSocket
 from backend.state.chat_state import ChatState
