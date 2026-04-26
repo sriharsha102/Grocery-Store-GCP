@@ -2,6 +2,7 @@ import os
 import logging
 import sys
 from typing import List, Dict, Any, Tuple
+from datetime import datetime, timedelta
 from langchain_core.tools import tool
 from langchain_core.pydantic_v1 import BaseModel, Field
 from backend.integrations.google_sheets.sheets_dal import get_menu, get_menu_for_tabs, get_tab_titles
@@ -136,6 +137,34 @@ def _validate_cart_against_sheet(
     return {"ok": True}
 
 
+def _calculate_delivery_date() -> str:
+    """
+    Calculates delivery date based on order day of week:
+    - Orders placed Sunday-Wednesday: Thursday delivery
+    - Orders placed Thursday-Saturday: Sunday delivery
+    
+    Returns:
+        Delivery date as string in format "YYYY-MM-DD"
+    """
+    today = datetime.now()
+    weekday = today.weekday()  # 0=Monday, 1=Tuesday, ..., 6=Sunday
+    
+    if weekday in [6, 0, 1, 2]:  # Sunday, Monday, Tuesday, Wednesday
+        # Calculate days until next Thursday (weekday=3)
+        days_until_thursday = (3 - weekday) % 7
+        delivery_date = today + timedelta(days=days_until_thursday)
+        log.info("Order placed on %s, scheduling delivery for Thursday %s", 
+                 today.strftime("%A"), delivery_date.strftime("%Y-%m-%d"))
+    else:  # Thursday, Friday, Saturday (weekday=3, 4, 5)
+        # Calculate days until next Sunday (weekday=6)
+        days_until_sunday = (6 - weekday) % 7
+        delivery_date = today + timedelta(days=days_until_sunday)
+        log.info("Order placed on %s, scheduling delivery for Sunday %s", 
+                 today.strftime("%A"), delivery_date.strftime("%Y-%m-%d"))
+    
+    return delivery_date.strftime("%Y-%m-%d")
+
+
 @tool(args_schema=TriggerPaymentArgs)
 async def trigger_payment(cart_items: List[CartItem], session_id: str):
     """
@@ -196,6 +225,8 @@ async def trigger_payment(cart_items: List[CartItem], session_id: str):
 
     # 3. Build Stripe line_items
     line_items = []
+    cart_total = 0
+    
     for item in cart_items:
         amount_cents = int(round(item.price * 100))
         line_items.append({
@@ -208,6 +239,28 @@ async def trigger_payment(cart_items: List[CartItem], session_id: str):
             },
             "quantity": item.quantity,
         })
+        cart_total += item.price * item.quantity
+    
+    # Add delivery charge if cart total is less than $30
+    DELIVERY_CHARGE = 6.99
+    MINIMUM_ORDER = 30.00
+    if cart_total < MINIMUM_ORDER:
+        delivery_cents = int(round(DELIVERY_CHARGE * 100))
+        line_items.append({
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": "Delivery Charge",
+                },
+                "unit_amount": delivery_cents,
+            },
+            "quantity": 1,
+        })
+        log.info("Added delivery charge of $%.2f (cart total: $%.2f)", DELIVERY_CHARGE, cart_total)
+    
+    # Calculate delivery date based on order day
+    delivery_date = _calculate_delivery_date()
+    
     log.info("Line items for Stripe: %s", line_items)
 
     # 4. Create Stripe embedded Checkout Session
@@ -218,7 +271,10 @@ async def trigger_payment(cart_items: List[CartItem], session_id: str):
             ui_mode="embedded_page",
             billing_address_collection="required",
             redirect_on_completion="never",
-            metadata={"chat_session_id": session_id},
+            metadata={
+                "chat_session_id": session_id,
+                "delivery_date": delivery_date,
+            },
         )
     except Exception as e:
         log.exception("Stripe Checkout Session creation failed.")
@@ -237,6 +293,7 @@ async def trigger_payment(cart_items: List[CartItem], session_id: str):
         message = {
             "type": "payment_intent_created",
             "client_secret": checkout_session.client_secret,
+            "delivery_date": delivery_date,
         }
         await ws.send_json(message)
     except Exception as e:
@@ -248,10 +305,12 @@ async def trigger_payment(cart_items: List[CartItem], session_id: str):
         }
 
     # 6. final LLM text
+    delivery_day = datetime.strptime(delivery_date, "%Y-%m-%d").strftime("%A")
     return (
-        "Payment form has been initialized. Tell the user: "
-        "'The payment form has been initialized. Please complete your payment.' "
-        "Do NOT ask them to tell you when they're done."
+        f"Payment form has been initialized. Tell the user: "
+        f"'The payment form has been initialized. Your order will be delivered on {delivery_day}, {delivery_date}. "
+        f"Please complete your payment.' "
+        f"Do NOT ask them to tell you when they're done."
     )
 
 
